@@ -1,0 +1,100 @@
+Below is a detailed logic analysis for the DatasetLoader module. This analysis explains how the DatasetLoader class should be structured, how it will generate the procedural dataset (using the 2D sketch and CAD model generation algorithms described in the paper), and how it will also support loading existing datasets. It highlights the interaction with utility functions (from utils.py) and the use of CadQuery to validate generated CAD code.
+
+─────────────────────────────  
+1. Class Initialization and Configuration  
+─────────────────────────────  
+• The DatasetLoader class’s __init__ method will accept a configuration dictionary (parsed from config.yaml).  
+• The configuration parameters to be used include:  
+ – The number of procedural samples to generate (from config: dataset.procedurally_generated_samples).  
+ – The name or identifier for any alternative (existing) dataset (config: dataset.alternative_dataset).  
+ – The name of the CAD library (e.g., “CadQuery” – from config).  
+• Other settings (if needed, such as random seed for reproducibility) may also be initialized here.
+
+─────────────────────────────  
+2. Procedural Dataset Generation  
+─────────────────────────────  
+The generate_procedural_dataset(num_samples: int) method must implement two main algorithms:  
+
+A. 2D Sketch Generation (Algorithm 1 in the paper)  
+ • Start by randomly choosing the number of primitives (e.g., an integer between 3 and 8).  
+ • Initialize an empty “compositeShape” (or a similar data structure) to hold the combined primitives.  
+ • Loop over each primitive:  
+  – Randomly select a primitive shape (e.g., a Circle or a RotatedRectangle).  
+  – Randomly choose a Boolean operation (Union or Cut).  
+  – Combine the current primitive with the existing composite shape using the chosen Boolean operation.  
+ • After combining all primitives:  
+  – Extract the boundary loops from the composite shape by calling a utility function (e.g., ExtractBoundaryLoops).  
+  – For each identified loop, decompose it into a sequence of edges (lines, arcs, circles) by calling an AnalyzeBoundary function. Also determine whether it is an outer loop.  
+  – Run a topological validation (using a utility such as validateShapeTopology) to ensure loops do not self-intersect and each primitive has a nonzero length.  
+ • The output of this stage should be a validated list or representation of the sketch (e.g., a list of (edge_sequence, isOuter) tuples).
+
+B. CAD Model Generation (Algorithm 2 in the paper)  
+ • Given the validated 2D sketch from step A, proceed to generate the CAD model by:  
+  – Selecting a set of reference planes. Typically, three canonical planes are possible. Randomly pick one (with a little random translation offset) as the sketch plane.  
+  – Extruding the sketch on the chosen plane to create a 3D volume. This uses CadQuery’s extrusion operations.  
+  – Merging the extruded volume with any previously generated parts using Boolean union.  
+  – Normalizing the CAD model so that it fits within a unit bounding box (centered at the origin) and applying quantization (ensuring coordinates are within –100 to 100 and respect the minimum resolution of 1).  
+  – Optionally, invoking a “simplification” or abstraction step that may replace a low-level sketch-extrude sequence with a high-level primitive (e.g., a box or a cylinder) when applicable.  
+
+C. CAD Code Generation and Validation  
+ • Once the CAD model is generated, produce a corresponding CAD code string written in Python using CadQuery.  
+  – The code should include the necessary library import statement for CadQuery, set up the workplane with the chosen sketch plane, and include the sequence of sketching and extrusion commands.  
+ • Check the validity of the generated code:  
+  – Use CadQuery (or a helper utility that wraps PythonOCC’s BRepCheck analyzer) to execute the code and verify that it runs without syntax errors and the resulting CAD model is geometrically valid.  
+ • Duplicate Detection:  
+  – Before adding a generated sample to the final dataset, use a duplicate detection protocol (via a utility function from utils.py) that might compute a hash of the CAD code string or model parameters.  
+  – Only retain unique CAD code samples.
+
+D. Point Cloud Extraction (Optional in Generation)  
+ • Although the primary focus of this module is to produce the CAD code and corresponding valid CAD model, you can also optionally add a step to generate and attach a point cloud sampled from the CAD model’s surface.  
+  – Sampling can be done using a separate function from utils.py (or as part of the CAD validation process).  
+  – The number of points may be adjusted later (since the model’s input will be downsampled to 256 points via the PointCloudProcessor).
+
+E. Returning the Dataset  
+ • Assemble each valid sample into an object (e.g., a dictionary) containing at minimum:  
+  – "cad_code": The generated Python code string for the CAD model.  
+  – "cad_model": (Optionally) the object resulting from executing the CAD code (for validation or visualization).  
+  – "point_cloud": (Optionally) a sampled point cloud corresponding to the CAD model geometry.  
+ • Continue generating samples until the desired number (num_samples) is reached.  
+ • Log progress after every set of iterations (using log_interval from config.logging if needed).
+
+─────────────────────────────  
+3. Loading Existing Datasets  
+─────────────────────────────  
+• The load_existing_dataset(dataset_name: str) method should handle the case when an alternative dataset is specified (e.g., DeepCAD 160k, Fusion360, or CC3D).  
+• The method should:  
+ – Determine the file paths or sources for the dataset specified by dataset_name.  
+ – Load the CAD representations and convert (if needed) to the CadQuery Python code format. For example, if the dataset is in a proprietary format, convert it into the standard format expected by the training pipeline.  
+ – Validate the imported CAD code using the same CAD validation functions (ϕ_syn and ϕ_cad) so that the downstream training will operate on clean data.  
+ – Return a list (or other collection) of samples in the same format as those generated procedurally (i.e., dictionaries including CAD code, model, and point cloud if available).
+
+─────────────────────────────  
+4. Integration with Utilities  
+─────────────────────────────  
+• This module is expected to depend on utility functions defined in utils.py. Such functions include:  
+ – Duplicate detection (e.g., using hash functions on the CAD code strings).  
+ – CAD code validation (e.g., a function that executes a CAD Python script via CadQuery and checks with PythonOCC’s BRepCheck analyzer).  
+ – Additional helper routines for randomness (e.g., generating random offsets, selecting primitives, etc.).  
+• Make sure to import these utilities at the top of dataset_loader.py.
+
+─────────────────────────────  
+5. Error Handling and Logging  
+─────────────────────────────  
+• Include try/except blocks around calls that execute the CAD code or perform geometric operations, so that any exceptions (e.g., due to invalid sketches or extrusion errors) do not crash the entire dataset generation process.  
+• If a sample fails validation, log the error (using a logging function from utils.py or Python’s logging module) and continue to the next iteration.  
+• Ensure that progress is periodically logged to help monitor generation for large numbers of samples (as the configuration specifies a log_interval).
+
+─────────────────────────────  
+6. Returning the Final Dataset  
+─────────────────────────────  
+• The generate_procedural_dataset method should return a list of samples that have passed all validation steps and are free of duplicates.  
+• Each sample in the list should be consistent with the expected input for later stages (i.e., training in the Model module).
+
+─────────────────────────────  
+Summary  
+─────────────────────────────  
+– The DatasetLoader class in dataset_loader.py is responsible for both generating a large-scale, procedurally generated CAD dataset (following Algorithms 1 and 2) and for loading existing datasets in a consistent format.  
+– It utilizes CadQuery for code generation and geometric validation, leverages utility functions (for duplicate detection, CAD code validation, etc.), and handles common errors gracefully while logging progress.  
+– The output of this module (a list of sample dictionaries) will then be used by the Trainer and Evaluation modules in later steps of the pipeline.
+
+This analysis should serve as a clear blueprint for implementing the DatasetLoader class in dataset_loader.py, ensuring that each component and step accurately reflects the methods and experimental setup described in the CAD-Recode paper while remaining consistent with the provided design and configuration file.

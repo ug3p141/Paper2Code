@@ -1,0 +1,87 @@
+----------------------------------------
+[Implementation approach]
+We will build a modular system using open-source libraries: PyTorch for deep learning, HuggingFace Transformers for loading and fine-tuning the pre-trained Qwen2 LLM, NumPy for numerical operations, and CadQuery for CAD code generation and validation. The system will consist of a procedural dataset generator for creating CAD models as Python CadQuery code combined with corresponding point clouds, a point cloud processor that applies furthest point sampling and Fourier positional encoding, a model module that integrates the point cloud projector with a fine-tuned LLM for CAD code generation, and trainer/evaluation modules for end-to-end training and metric computation (Chamfer Distance, IoU, and Invalidity Ratio). The overall architecture is kept simple with a single entry point, modular component classes, and clear interfaces.
+
+----------------------------------------
+[File list]
+- main.py
+- dataset_loader.py
+- model.py
+- trainer.py
+- evaluation.py
+- utils.py
+
+----------------------------------------
+[Data structures and interfaces]
+classDiagram
+    class Main {
+        +__init__(config: dict)
+        +run_experiment() -> None
+    }
+    class DatasetLoader {
+        +__init__(config: dict)
+        +generate_procedural_dataset(num_samples: int) -> list
+        +load_existing_dataset(dataset_name: str) -> list
+    }
+    class PointCloudProcessor {
+        +__init__(num_points: int)
+        +furthest_point_sampling(point_cloud: np.ndarray) -> np.ndarray
+        +fourier_encode(points: np.ndarray) -> np.ndarray
+    }
+    class Model {
+        +__init__(params: dict)
+        +forward(point_cloud: torch.Tensor) -> torch.Tensor
+    }
+    class Trainer {
+        +__init__(model: Model, dataset: list, config: dict)
+        +train() -> None
+        +save_checkpoint(filepath: str) -> None
+        +load_checkpoint(filepath: str) -> None
+    }
+    class Evaluation {
+        +__init__(model: Model, dataset: list)
+        +evaluate() -> dict
+        +compute_chamfer_distance(pred: torch.Tensor, target: torch.Tensor) -> float
+        +compute_iou(pred: torch.Tensor, target: torch.Tensor) -> float
+        +compute_invalidity_ratio(outputs: list) -> float
+    }
+    %% Relationships
+    Main --> DatasetLoader : uses
+    Main --> Trainer : creates
+    Main --> Evaluation : creates
+    Trainer --> Model : updates
+    Evaluation --> Model : queries
+    Model --> PointCloudProcessor : integrates
+
+
+----------------------------------------
+[Program call flow]
+sequenceDiagram
+    participant M as Main
+    participant DL as DatasetLoader
+    participant PCP as PointCloudProcessor
+    participant MD as Model
+    participant TR as Trainer
+    participant EV as Evaluation
+
+    M->>DL: load_existing_dataset(dataset_name) OR generate_procedural_dataset(num_samples)
+    DL-->>M: return dataset
+    M->>PCP: initialize(num_points)
+    M->>MD: initialize(model_params)
+    MD->>PCP: setup point cloud processing
+    M->>TR: initialize(model, dataset, config)
+    TR->>MD: forward(point_cloud) [for each batch]
+    MD-->>TR: return predicted CAD code tokens
+    TR->>TR: compute NLL loss, backpropagate, update model weights
+    TR-->>M: signal training complete
+    M->>EV: initialize(model, dataset)
+    EV->>MD: forward(point_cloud) [for evaluation]
+    MD-->>EV: return predictions
+    EV->>EV: compute metrics (Chamfer, IoU, Invalidity Ratio)
+    EV-->>M: return evaluation metrics
+
+
+----------------------------------------
+[Anything UNCLEAR]
+The exact configuration details for the Fourier positional encoding (e.g., frequency ranges) and tokenization for Python CAD code generation are not fully specified. Also, further clarification is needed on the dataset file formats, point sampling strategy (beyond furthest point sampling), and the integration of point cloud tokens with textual code tokens into the LLM input pipeline.
+

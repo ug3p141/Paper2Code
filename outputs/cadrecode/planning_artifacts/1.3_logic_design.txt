@@ -1,0 +1,43 @@
+----------------------------------------
+[Required packages]
+- numpy==1.21.0
+- torch==1.9.0
+- transformers
+- cadquery
+- pythonocc-core
+- tqdm
+
+----------------------------------------
+[Required Other language third-party packages]
+- No third-party dependencies required
+
+----------------------------------------
+[Logic Analysis]
+- ['dataset_loader.py', 'DatasetLoader class: Implements methods for generating a procedural CAD dataset using defined algorithms for 2D sketch and CAD model generation. Also handles loading of existing datasets (e.g., DeepCAD, Fusion360, CC3D). Depends on utility functions from utils.py (e.g., duplicate detection, configuration parsing) and uses CadQuery for validating generated CAD code.']
+- ['utils.py', 'Provides common utility functions such as furthest point sampling, Fourier positional encoding, CAD code validation (syntax and geometric), logging, and configuration parsing. These utilities are shared across dataset_loader.py, model.py, and trainer.py.']
+- ['model.py', 'Defines the Model class which integrates two main components: the PointCloudProcessor and the FineTunedLLM decoder. The PointCloudProcessor performs furthest point sampling and Fourier encoding on input point clouds. The FineTunedLLM is implemented using the transformers library (based on Qwen2) and is responsible for generating CAD code tokens. This module imports helper functions from utils.py.']
+- ['trainer.py', 'Trainer class: Orchestrates the end-to-end training process. It loads data from DatasetLoader, passes input batches through the Model, computes the Negative Log-Likelihood (NLL) loss, and updates model weights using AdamW with a cosine learning rate scheduler. It also provides checkpoint saving/loading functionality.']
+- ['evaluation.py', 'Evaluation class: Implements evaluation metrics including Chamfer Distance (CD), Intersection over Union (IoU), and Invalidity Ratio (IR). It uses the trained Model to predict CAD code from point clouds, post-processes predictions with CadQuery to verify validity, and computes the metrics against the ground truth.']
+- ['main.py', 'Entry point of the system: Parses configuration, uses DatasetLoader to obtain the dataset, instantiates the Model, Trainer, and Evaluation classes, and coordinates the training and evaluation pipelines. Optionally handles test-time sampling and integration of CAD-QA experiments.']
+
+----------------------------------------
+[Task list]
+- dataset_loader.py
+- utils.py
+- model.py
+- trainer.py
+- evaluation.py
+- main.py
+
+----------------------------------------
+[Full API spec]
+
+
+----------------------------------------
+[Shared Knowledge]
+Shared configuration parameters (e.g., number of points, learning rate, batch size, total iterations) should be defined as global constants or in a separate config file. Utility functions (for furthest point sampling, Fourier encoding, code validation) in utils.py are reused across multiple modules. Standard libraries such as numpy and torch are used consistently across the system to manage arrays, tensors, and numerical computations.
+
+----------------------------------------
+[Anything UNCLEAR]
+Clarification is needed on the exact parameters for Fourier positional encoding and the tokenization approach for CAD code generation. Additionally, details regarding the dataset file formats and point cloud sampling strategies (beyond furthest point sampling) require further specification.
+

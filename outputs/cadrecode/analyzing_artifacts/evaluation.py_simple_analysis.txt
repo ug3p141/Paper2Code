@@ -1,0 +1,97 @@
+Below is a detailed logic analysis for the Evaluation module (evaluation.py). This analysis outlines how the Evaluation class should function, the step‐by‐step process for processing test samples, and how to compute the required metrics. Note that this analysis relies on configuration parameters (e.g., number of points, noise probability, etc.) from config.yaml, and it must use utility functions (such as code validation, point sampling, and Fourier encoding) defined in utils.py, as well as the Model’s forward method defined in model.py.
+
+─────────────────────────────  
+Overview of Evaluation Module  
+─────────────────────────────  
+• The Evaluation class is responsible for taking a trained Model and a given dataset (each sample containing an input point cloud and its corresponding ground-truth CAD model).  
+• For each sample, the model predicts CAD code (in the form of a CadQuery Python script), which is then post-processed and validated using the CadQuery library.  
+• After obtaining a valid CAD model from the generated code, the evaluation functions will compute:
+  – Chamfer Distance (CD): by sampling 8192 points from both the predicted and ground-truth CAD models.
+  – Intersection over Union (IoU): computed on the resulting meshes (or voxelizations) of the CAD models.
+  – Invalidity Ratio (IR): as the percentage of samples for which no valid CAD model is produced by the generated code.
+• Additionally, the evaluation process uses test-time sampling by generating 10 candidate predictions per input. This helps to pick the best candidate (or, if none are valid, flag the sample as invalid).
+
+─────────────────────────────  
+Main Steps in the Evaluation Process  
+─────────────────────────────  
+
+1. Initialization  
+ • The Evaluation class’s constructor (__init__) accepts:
+  – the trained Model instance (which already integrates the PointCloudProcessor and the fine-tuned LLM decoder),
+  – the dataset (a list or iterable of samples, where each sample contains at least a point cloud and its ground-truth CAD model),
+  – possible configuration information (e.g., logging interval, and number of test-time candidates).
+
+2. Iterating Over the Dataset (evaluate())  
+ • For each sample in the dataset, perform the following:
+  a. Extract the input point cloud and the corresponding ground-truth CAD model.
+  b. Implement test-time sampling by generating 10 candidate predictions:  
+   – For each candidate, apply (or reapply) the point cloud pre-processing (using furthest point sampling and potentially adding Gaussian noise using the specified probability of 0.5 and std 0.01 as in the config).  
+   – Feed the processed point cloud to the model via its forward() method to obtain a sequence of predicted tokens.
+   – Decode the predicted tokens into a Python code string that should reconstruct a CAD model using CadQuery.
+   – Attempt to execute the CAD code (using a helper from utils.py that wraps CadQuery functions) to obtain a CAD model object.  
+   – If the code execution fails (due to syntax error or producing an invalid geometry as checked by a function equivalent to ϕ_syn and ϕ_cad), mark that candidate as invalid.  
+  c. From the candidates:
+   – If one or more candidates produce a valid CAD model, select the “best” candidate (for instance, the one with the lowest Chamfer Distance relative to the ground truth).  
+   – If none of the candidates yield a valid CAD model, mark this sample as invalid.
+  d. For the chosen candidate (if valid):
+   – Sample 8192 points from the predicted CAD model’s surface and from the ground-truth model (this sampling may be implemented via a utility function in utils.py).
+   – Compute the Chamfer Distance (CD) between these two point sets using the compute_chamfer_distance() method.
+   – Compute the Intersection over Union (IoU) by voxelizing or comparing the meshes of both models via compute_iou() method.
+  e. Record the obtained CD and IoU for the sample.
+  f. Also maintain a count of samples for which no valid candidate was generated (to later compute the Invalidity Ratio, IR).
+
+3. Metrics Aggregation  
+ • After processing all samples:
+  – Calculate the overall mean and median Chamfer Distances over all valid samples.
+  – Compute the average IoU percentage.
+  – Compute the Invalidity Ratio as (number of samples with no valid prediction) divided by (total number of samples).
+ • Package these aggregated metrics into a dictionary (e.g., {"mean_CD": …, "median_CD": …, "IoU": …, "IR": …}) to return from the evaluate() method.
+
+─────────────────────────────  
+Supporting Functions and Methods  
+─────────────────────────────  
+
+• compute_chamfer_distance(pred_points: np.ndarray, target_points: np.ndarray) -> float  
+ – This method takes two point clouds (each shaped [N×3]) and computes the Chamfer Distance.  
+ – One possibility is to compute, for every point in the predicted cloud, the nearest neighbor in the target cloud (and vice versa), and average these distances.  
+ – An efficient implementation may use KD-tree based searches; however, the focus here is on clarity rather than optimization.
+
+• compute_iou(pred_model, target_model) -> float  
+ – This function will compare the volume (or voxelized representations) of the predicted CAD model and the ground-truth model.  
+ – A voxel grid is generated for each model (ideally normalized to fit within the same bounding box), and IoU is computed as (intersection volume)/(union volume).  
+ – The result should be expressed as a percentage.
+
+• compute_invalidity_ratio(total_samples: int, invalid_samples: int) -> float  
+ – This helper simply computes the ratio: invalid_samples / total_samples.
+
+• Utility & Exception Handling for CAD Code Execution  
+ – Use helper functions (possibly defined in utils.py) to execute a given CAD code string.  
+ – Wrap this in a try/except block to catch execution errors (or validation failures as per ϕ_syn and ϕ_cad).  
+ – The function should return a flag indicating whether the CAD model is valid and, if valid, the CAD model itself which can then be used for sampling.
+
+• Logging and Progress Reporting  
+ – Use tqdm to iterate over samples for progress visualization.  
+ – Log progress at intervals defined by config.logging.log_interval.
+ – Report individual sample metrics during evaluation (if needed) for debugging purposes.
+
+─────────────────────────────  
+Integration with the Overall Pipeline  
+─────────────────────────────  
+• The Evaluation class will be instantiated in main.py once the Model has been trained.  
+• It queries the Model by passing in a point cloud (already processed by the PointCloudProcessor from model.py).  
+• All configuration parameters (such as number of points, default batch size for evaluation if any, number of test-time candidates, etc.) are taken directly from the config.yaml.
+• The final evaluation output (a dictionary of metrics) will be used to compare against reported values (e.g., mean CD, median CD, IoU, IR) as described in the paper’s experimental results sections.
+
+─────────────────────────────  
+Summary  
+─────────────────────────────  
+The Evaluation module (evaluation.py) will:
+ 1. Loop over each sample in the provided dataset.
+ 2. For each sample, generate 10 candidate CAD code outputs by running the Model (with slight randomness via test-time sampling).
+ 3. Execute each candidate’s CAD code (using CadQuery) and validate it.
+ 4. For valid predictions, sample points from the predicted CAD model and compute Chamfer Distance and IoU against the ground truth.
+ 5. Select the best candidate per sample (or mark the sample invalid if no candidate is valid).
+ 6. Aggregate metrics across the entire dataset to compute mean and median CD, average IoU percentage, and the Invalidity Ratio.
+ 7. Return the metrics as a dictionary for reporting and further analysis.
+
+This detailed logic analysis should guide the development of evaluation.py to ensure consistency with the paper’s methodology, the planned design, and the configuration specified in config.yaml.

@@ -2,12 +2,28 @@
 
 GPT_VERSION="o3-mini"
 
-PAPER_NAME="Transformer"
-PDF_PATH="../examples/Transformer.pdf" # .pdf
-PDF_JSON_PATH="../examples/Transformer.json" # .json
-PDF_JSON_CLEANED_PATH="../examples/Transformer_cleaned.json" # _cleaned.json
-OUTPUT_DIR="../outputs/Transformer"
-OUTPUT_REPO_DIR="../outputs/Transformer_repo"
+
+#PAPER_NAME="Transformer"
+#PDF_PATH="../examples/Transformer.pdf" # .pdf
+#PDF_JSON_PATH="../examples/Transformer.json" # .json
+#PDF_JSON_CLEANED_PATH="../examples/Transformer_cleaned.json" # _cleaned.json
+#OUTPUT_DIR="../outputs/Transformer"
+#OUTPUT_REPO_DIR="../outputs/Transformer_repo"
+
+#PAPER_NAME="CADRecode"
+#PDF_PATH="../examples/cadrecode.pdf" # .pdf
+#PDF_JSON_PATH="../examples/cadrecode.json" # .json
+#PDF_JSON_CLEANED_PATH="../examples/cadrecode_cleaned.json" # _cleaned.json
+#OUTPUT_DIR="../outputs/cadrecode"
+#OUTPUT_REPO_DIR="../outputs/cadrecode_repo"
+
+
+PAPER_NAME="CADRecode_Mistral"
+PDF_PATH="../examples/cadrecode.pdf" # .pdf
+PDF_JSON_PATH="../examples/cadrecode_mistral.json" # .json
+PDF_JSON_CLEANED_PATH="../examples/cadrecode_mistral_cleaned.json" # _cleaned.json
+OUTPUT_DIR="../outputs/cadrecode_mistral"
+OUTPUT_REPO_DIR="../outputs/cadrecode_mistral_repo"
 
 mkdir -p $OUTPUT_DIR
 mkdir -p $OUTPUT_REPO_DIR

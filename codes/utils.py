@@ -3,6 +3,13 @@ import re
 import os
 from datetime import datetime
 
+# Add these imports at the top of utils.py
+try:
+    from claude_utils import print_log_cost_claude, claude_api_call, convert_messages_to_claude
+except ImportError:
+    # Claude utilities not available
+    pass
+
 def extract_planning(trajectories_json_file_path):
     with open(trajectories_json_file_path) as f:
         traj = json.load(f)

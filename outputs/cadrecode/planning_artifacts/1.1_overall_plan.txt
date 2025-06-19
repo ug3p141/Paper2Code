@@ -1,0 +1,191 @@
+Below is a comprehensive roadmap to reproduce the CAD‐Recode method. This plan is divided into major phases—from generating the training data to building the model and designing experiments—while highlighting all key details mentioned in the paper. Some points may require clarifications or additional choices during implementation.
+
+─────────────────────────────  
+1. OVERVIEW  
+─────────────────────────────  
+• Objective: Reverse engineer CAD models by predicting executable Python code (using the CadQuery library) from 3D point clouds.  
+• Core idea: Combine a lightweight point cloud processing “projector” with a pre‐trained, auto-regressive LLM (Qwen2-1.5B) fine-tuned on a large-scale, procedurally generated CAD dataset.  
+• End goals:  
+  – Generate CAD “sketch-extrude” sequences in Python code that reconstruct models.  
+  – Ensure the output code is valid (syntactically and geometrically) and can be further interpreted by off-the-shelf LLMs for editing or CAD-QA.
+
+─────────────────────────────  
+2. DATASET GENERATION  
+─────────────────────────────  
+A. Procedural Data Generation Pipeline  
+ • Implement two algorithms (as per Algorithms 1 and 2 in the paper’s supplementary):  
+  – Algorithm 1: 2D Sketch Generation  
+   ◦ Randomly choose between ~3–8 primitives (e.g., circles, rotated rectangles).  
+   ◦ Apply Boolean operations (union, cut) to combine them.  
+   ◦ Extract boundary loops and decompose them into a sequence of edges (lines, arcs, circles).  
+   ◦ Apply topological validation (non-intersecting loops, minimum primitive lengths).  
+  – Algorithm 2: CAD Model Generation  
+   ◦ Select one of the three canonical planes (translated by a random offset) as the sketch plane.  
+   ◦ Extrude the validated sketch using CadQuery operations.  
+   ◦ Merge volumes via Boolean union.  
+   ◦ Normalize the final model to fit in a unit bounding box and quantize parameters (coordinates in [–100, 100] with minimum resolution 1).  
+   ◦ Use a simplified “abstraction” step (e.g., replacing a 2D sketch-extrude sequence with a high-level primitive like box or cylinder) where applicable.  
+ • Validate each generated CAD code:  
+  – Run the generated Python code (using a standard interpreter with the CadQuery library).  
+  – Check syntactic correctness (ϕ_syn) and CAD-specific validity (ϕ_cad) using a tool like PythonOCC’s BRepCheck analyzer.  
+  – Use a duplicate detection protocol (e.g., hash-based) to ensure that every sample is unique.  
+ • Produce 1 million samples.  
+  – Additionally, for ablation/comparisons, generate a 160k-sample dataset (i.e. converted from DeepCAD) following the same format.
+
+B. Point Cloud Extraction  
+ • For each CAD model, sample points from its surface or the underlying mesh:  
+  – For training, generate dense point clouds and then downsample to the required number (see next section).  
+ • For evaluation, use the available datasets:  
+  – DeepCAD (8046 models)  
+  – Fusion360 (1725 models)  
+  – CC3D (2973 models – including real-scanned artifacts such as noise, missing parts, smooth edges)  
+ • Document any assumptions about sampling (e.g., uniform sampling, number of points, noise injection).
+
+─────────────────────────────  
+3. MODEL ARCHITECTURE  
+─────────────────────────────  
+A. Point Cloud Projection Module  
+ • Input: Dense point cloud P ∈ ℝ^(n×3).  
+ • Processing steps:  
+  – Apply furthest point sampling to downsample P to n_p = 256 points.  
+  – Encode each point with Fourier positional encoding (refer to [62] for details).  
+  – Use a linear layer to project the encoded points into a fixed embedding space of dimension d_q = 1536, resulting in query tokens Q_p ∈ ℝ^(n_p×d_q).  
+ • Note: The exact details for Fourier encoding (e.g., frequency scales) may need to be finalized based on common practices or further clarification in the supplementary material.
+
+B. CAD Code Decoder (LLM) Module  
+ • Backbone: Pre-trained Qwen2-1.5B (primary); also note ablation with Qwen2-0.5B.  
+ • Adaptation:  
+  – Fine-tune the LLM to generate CAD code tokens via autoregressive next-token prediction.  
+  – The code is in the form of Python scripts using the CadQuery library.  
+  – Use a tokenized vocabulary that includes alphanumeric characters and operators (use the HuggingFace tokenizer associated with Qwen2, if available).  
+ • Input to the decoder:  
+  – Concatenate point cloud tokens Q_p with initial code tokens Q_t (starting with <s>).  
+  – Full sequence [Q_p; Q_t] ∈ ℝ^((n_p + n_t)×d_q).  
+ • Training objective: Minimize the Negative Log-Likelihood (NLL) over the CAD code sequence.  
+  – Use special tokens <s> and <e> to mark the boundaries of code generation.
+
+C. Integration & End-to-End Training  
+ • The point cloud projector and the LLM decoder are trained jointly.  
+ • Apply Gaussian noise (mean = 0, std = 0.01) to the input point cloud coordinates with a probability of 0.5 per sample to improve robustness.
+
+─────────────────────────────  
+4. TRAINING SETUP & HYPERPARAMETERS  
+─────────────────────────────  
+A. Hyperparameters  
+ • Query token embedding dimension: 1536.  
+ • Downsampled point cloud size: 256 points.  
+ • Optimizer: AdamW with learning rate = 0.0002 and weight decay = 0.01.  
+ • Learning rate schedule: Cosine scheduler with an initial warmup period of 1k iterations.  
+ • Total iterations: 100k  
+ • Batch size: 18  
+ • Hardware: Single NVIDIA H100 GPU (training expected in ~12 hours based on these settings).
+
+B. Training Details  
+ • Fine-tune pre-trained Qwen2-1.5B (ensure proper initialization from a HuggingFace checkpoint if available).  
+ • Both modules (point cloud projector and decoder) learn end-to-end; the projector learns from scratch while the LLM is fine-tuned for CAD code generation.  
+ • Loss: Use the standard NLL loss computed over the predicted token sequence.
+
+C. Ablation Studies  
+ • Compare training on 160k DeepCAD samples versus 1M procedurally generated samples.  
+ • Vary the input point cloud size (e.g., testing with 128 vs. 256 points).  
+ • Compare different LLM model sizes (Qwen2-1.5B vs. Qwen2-0.5B).  
+ • Evaluate the effect of test-time sampling (see next section).
+
+─────────────────────────────  
+5. INFERENCE & TEST-TIME SAMPLING  
+─────────────────────────────  
+A. Inference Pipeline  
+ • Given a new input point cloud:  
+  – Downsample using furthest point sampling to 256 points.  
+  – Apply Fourier positional encoding and linear projection to produce Q_p.  
+  – Feed Q_p along with the start token (<s>) to the LLM decoder.  
+  – Autoregressively generate tokens until the end token (<e>) is produced.  
+ • Post-process the generated token sequence to obtain a Python CAD script.
+
+B. Test-Time Sampling  
+ • To reduce the possibility of invalid outputs, adopt a sampling strategy:  
+  – Generate 10 candidates per input, each using a different sampling instance (e.g., different random seeds for furthest point sampling).  
+  – For each candidate:  
+   – Validate the CAD code syntactically and using the CAD validation routine (ϕ_syn and ϕ_cad).  
+  – Choose the best candidate (e.g., the one that is valid and closest to the ground truth based on evaluation metrics).
+
+─────────────────────────────  
+6. EXPERIMENTS & EVALUATION  
+─────────────────────────────  
+A. Datasets for Evaluation  
+ • DeepCAD: 8046 test models; if needed, convert existing DeepCAD CAD representations to CadQuery Python code.  
+ • Fusion360: 1725 test models; sample point clouds from available CAD meshes.  
+ • CC3D (real-world): 2973 models; note these include noise, missing parts, and smoothed edges.
+
+B. Evaluation Metrics  
+ • Chamfer Distance (CD):  
+  – Compute mean and median CD using 8192 points sampled from the surfaces.  
+  – CD values should be scaled (multiplied by 10³ as in the paper).  
+ • Intersection over Union (IoU):  
+  – Compute IoU between the reconstructed CAD model’s mesh and the ground truth mesh, expressed as a percentage.  
+ • Invalidity Ratio (IR):  
+  – Percentage of generated CAD code sequences that do not produce a valid CAD model when executed.  
+ • (Optionally) Command and Parameter Accuracy:  
+  – Evaluate the ability to reproduce specific CAD commands and numerical parameters as done in [48].
+
+C. Additional Experiments  
+ • CAD-QA Pipeline:  
+  – Use the generated CAD Python code as input for an off-the-shelf LLM (e.g., GPT-4o) to answer CAD-specific questions.  
+  – Compare accuracy with baseline methods (e.g., CAD-SIGNet and PointLLM).  
+ • Editing Pipeline:  
+  – Use a refactoring prompt (as demonstrated in the paper) to have GPT-4o generate code that integrates interactive editability (e.g., using ipywidgets for sliders).  
+  – Test the usability of the output in an interactive environment like a Jupyter Notebook.
+
+D. Ablation Studies Recap  
+ • Compare performance (CD, IoU, IR) for:  
+  – Different training dataset sizes (DeepCAD 160k vs. generated 1M samples).  
+  – With and without test-time sampling.  
+  – Varying number of input points and different LLM sizes.
+
+─────────────────────────────  
+7. IMPLEMENTATION CONSIDERATIONS & UNCERTAINTIES  
+─────────────────────────────  
+A. Key Implementation Points  
+ • Use PyTorch (or an equivalent deep learning framework) to integrate the projection module and to fine-tune the LLM.  
+ • Leverage HuggingFace libraries for model loading and tokenization (ensure that Qwen2 models are available or consider alternatives if not).  
+ • Interface with CadQuery for both code generation and code execution (to verify validity).  
+ • Use PythonOCC’s BRepCheck (or similar CAD validation libraries) to assess geometric validity of the reconstructed models.
+
+B. Unclear/Missing Details to Clarify  
+ • Specific configuration details of the Fourier positional encoding (frequency values, number of components) may require a design decision or further clarification from the supplementary materials.  
+ • The exact procedure for duplicate detection in the generated dataset is mentioned briefly; decide on a reproducible method (e.g., using hash checks on code strings).  
+ • Details around integrating point cloud tokens with text tokens in the LLM (e.g., handling different modalities) might require experimentation.  
+ • Handling code tokenization for Python code: ensure that the vocabulary covers all necessary symbols and that the tokenizer is compatible with the chosen LLM.
+
+─────────────────────────────  
+8. ROADMAP SUMMARY  
+─────────────────────────────  
+Step 1. Data Generation  
+ • Implement and test Algorithms 1 and 2 to generate valid, diverse CAD Python code samples paired with corresponding CAD models and point clouds.  
+ • Validate each sample (syntax, CAD geometry, duplicates).
+
+Step 2. Model Construction  
+ • Build the point cloud projector using furthest point sampling, Fourier encoding, and a linear projection layer.  
+ • Load and prepare the pre-trained Qwen2-1.5B LLM; adapt its input pipeline to accept both point cloud tokens and code tokens.
+
+Step 3. Training  
+ • Integrate both sub-modules and set up an end-to-end training loop with NLL loss.  
+ • Work with the specified hyperparameters (AdamW, learning rate, batch size, iterations, etc.).  
+ • Augment point clouds with Gaussian noise as specified.
+
+Step 4. Inference Pipeline  
+ • Develop a generation function to produce CAD Python code from new point clouds using autoregressive decoding.  
+ • Implement test-time sampling to generate and validate multiple output candidates.
+
+Step 5. Experiments & Evaluation  
+ • Evaluate on DeepCAD, Fusion360, and CC3D datasets using CD, IoU, and IR metrics.  
+ • Run CAD-QA and editing experiments using GPT-4o to assess interpretability and interactive editing.
+
+Step 6. Ablations and Benchmarking  
+ • Conduct controlled ablation experiments varying training data, input point cloud size, and LLM capacity.  
+ • Compare against baselines reported in the paper.
+
+─────────────────────────────  
+CONCLUSION  
+─────────────────────────────  
+This roadmap outlines a detailed plan that covers the full reproduction pipeline—from dataset generation and model design to training, inference, and evaluation. Although some implementation details (e.g., Fourier encoding specifics and duplicate detection methods) require further clarification or design choices, this plan should serve as a robust foundation once you proceed to write the final code.

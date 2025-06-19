@@ -1,0 +1,27 @@
+## config.yaml
+training:
+  learning_rate: 0.0002
+  weight_decay: 0.01
+  total_iterations: 100000
+  warmup_iterations: 1000
+  batch_size: 18
+  optimizer: "AdamW"
+  lr_scheduler: "Cosine"
+  gpu: "NVIDIA H100"
+  training_time: "12 hours"
+model:
+  point_cloud:
+    num_points: 256
+    noise:
+      probability: 0.5
+      std: 0.01
+    embedding_dimension: 1536
+  llm:
+    model_name: "Qwen2-1.5B"
+  decoder: "Auto-regressive Python code generator"
+dataset:
+  procedurally_generated_samples: 1000000
+  alternative_dataset: "DeepCAD 160k"
+  cad_library: "CadQuery"
+logging:
+  log_interval: 100
