@@ -1,0 +1,234 @@
+"""
+Fourier positional encoding for 3D point coordinates.
+Based on paper: "CAD-Recode: Reverse Engineering CAD Code from Point Clouds"
+
+This module implements Fourier positional encoding as a foundational component
+for the CAD-Recode point cloud projector. The encoding transforms raw 3D coordinates
+into higher-dimensional representations that help the neural network better understand
+spatial relationships and geometric patterns in point clouds.
+"""
+
+import torch
+import torch.nn as nn
+import numpy as np
+import math
+from typing import Optional, Union
+
+
+class FourierEncoding(nn.Module):
+    """
+    Fourier positional encoding for 3D point coordinates.
+    
+    Transforms 3D coordinates into higher-dimensional representations using
+    sine and cosine functions at multiple frequency scales. This encoding
+    helps neural networks better understand spatial relationships.
+    
+    The encoding follows the standard Fourier positional encoding approach:
+    For each coordinate dimension (x, y, z) and frequency index i:
+    - sin(2^i * π * coord) and cos(2^i * π * coord)
+    
+    This creates a representation of size 3 * 2 * num_freqs for each point.
+    """
+    
+    def __init__(self, num_freqs: int = 64):
+        """
+        Initialize Fourier encoding with specified number of frequencies.
+        
+        Args:
+            num_freqs: Number of frequency components (default: 64 from paper config)
+                      Creates frequency scales [2^0, 2^1, ..., 2^(num_freqs-1)]
+        
+        Raises:
+            ValueError: If num_freqs is not positive
+        """
+        super(FourierEncoding, self).__init__()
+        
+        if num_freqs <= 0:
+            raise ValueError(f"num_freqs must be positive, got {num_freqs}")
+        
+        self.num_freqs = num_freqs
+        
+        # Precompute frequency scales: [2^0, 2^1, 2^2, ..., 2^(num_freqs-1)]
+        # Shape: (num_freqs,)
+        freq_bands = torch.pow(2.0, torch.arange(num_freqs, dtype=torch.float32))
+        
+        # Register as buffer so it moves with the module to correct device
+        self.register_buffer('freq_bands', freq_bands)
+        
+        # Store pi as a buffer for numerical consistency
+        self.register_buffer('pi', torch.tensor(math.pi, dtype=torch.float32))
+        
+        # Output dimension: 3 coordinates * 2 functions (sin, cos) * num_freqs
+        self.output_dim = 3 * 2 * num_freqs
+    
+    def encode(self, coords: torch.Tensor) -> torch.Tensor:
+        """
+        Apply Fourier positional encoding to 3D coordinates.
+        
+        Args:
+            coords: Input coordinates tensor of shape (..., 3)
+                   Last dimension must be 3 for (x, y, z) coordinates
+        
+        Returns:
+            Encoded coordinates tensor of shape (..., 3 * 2 * num_freqs)
+            where the encoding dimension is 3 * 2 * num_freqs
+        
+        Raises:
+            ValueError: If input doesn't have 3D coordinates in last dimension
+            RuntimeError: If input contains NaN or infinite values
+        """
+        # Input validation
+        if coords.size(-1) != 3:
+            raise ValueError(f"Expected 3D coordinates (last dim = 3), got shape {coords.shape}")
+        
+        # Check for invalid values
+        if torch.isnan(coords).any() or torch.isinf(coords).any():
+            raise RuntimeError("Input coordinates contain NaN or infinite values")
+        
+        # Get input shape for later reconstruction
+        input_shape = coords.shape[:-1]  # All dimensions except last (coordinate) dimension
+        batch_size = coords.numel() // 3  # Total number of points across all batch dimensions
+        
+        # Reshape to (batch_size, 3) for easier processing
+        coords_flat = coords.view(-1, 3)  # Shape: (batch_size, 3)
+        
+        # Move frequency bands to same device as input
+        freq_bands = self.freq_bands.to(coords.device)  # Shape: (num_freqs,)
+        pi = self.pi.to(coords.device)
+        
+        # Expand coordinates and frequencies for broadcasting
+        # coords_expanded: (batch_size, 3, 1)
+        # freq_bands_expanded: (1, 1, num_freqs)
+        coords_expanded = coords_flat.unsqueeze(-1)  # Shape: (batch_size, 3, 1)
+        freq_bands_expanded = freq_bands.view(1, 1, -1)  # Shape: (1, 1, num_freqs)
+        
+        # Apply frequency scaling: coords * freq * pi
+        # Shape: (batch_size, 3, num_freqs)
+        scaled_coords = coords_expanded * freq_bands_expanded * pi
+        
+        # Apply sine and cosine functions
+        # Shape: (batch_size, 3, num_freqs)
+        sin_encoding = torch.sin(scaled_coords)
+        cos_encoding = torch.cos(scaled_coords)
+        
+        # Interleave sin and cos encodings
+        # Stack along new dimension: (batch_size, 3, num_freqs, 2)
+        sin_cos_stack = torch.stack([sin_encoding, cos_encoding], dim=-1)
+        
+        # Reshape to combine frequency and sin/cos dimensions
+        # Shape: (batch_size, 3, 2 * num_freqs)
+        sin_cos_combined = sin_cos_stack.view(batch_size, 3, 2 * self.num_freqs)
+        
+        # Flatten coordinate and encoding dimensions
+        # Shape: (batch_size, 3 * 2 * num_freqs)
+        encoded_flat = sin_cos_combined.view(batch_size, self.output_dim)
+        
+        # Reshape back to original batch dimensions
+        # Shape: (..., 3 * 2 * num_freqs)
+        encoded = encoded_flat.view(*input_shape, self.output_dim)
+        
+        return encoded
+    
+    def forward(self, coords: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass - alias for encode method.
+        
+        Args:
+            coords: Input coordinates tensor of shape (..., 3)
+        
+        Returns:
+            Encoded coordinates tensor of shape (..., 3 * 2 * num_freqs)
+        """
+        return self.encode(coords)
+    
+    def get_output_dim(self) -> int:
+        """
+        Get the output dimension of the encoding.
+        
+        Returns:
+            Output dimension (3 * 2 * num_freqs)
+        """
+        return self.output_dim
+    
+    def get_num_freqs(self) -> int:
+        """
+        Get the number of frequency components.
+        
+        Returns:
+            Number of frequency components
+        """
+        return self.num_freqs
+    
+    def extra_repr(self) -> str:
+        """
+        Extra representation for debugging and model summary.
+        
+        Returns:
+            String representation of module parameters
+        """
+        return f'num_freqs={self.num_freqs}, output_dim={self.output_dim}'
+
+
+def create_fourier_encoding(num_freqs: Optional[int] = None) -> FourierEncoding:
+    """
+    Factory function to create FourierEncoding with default configuration.
+    
+    Args:
+        num_freqs: Number of frequency components. If None, uses default (64)
+    
+    Returns:
+        Configured FourierEncoding instance
+    """
+    if num_freqs is None:
+        num_freqs = 64  # Default from paper configuration
+    
+    return FourierEncoding(num_freqs=num_freqs)
+
+
+def test_fourier_encoding():
+    """
+    Simple test function to verify Fourier encoding functionality.
+    This function can be used for debugging and validation.
+    """
+    print("Testing Fourier Encoding...")
+    
+    # Create encoding with default parameters
+    encoder = FourierEncoding(num_freqs=4)  # Small number for testing
+    
+    # Test with simple input
+    coords = torch.tensor([[[0.0, 0.0, 0.0],
+                           [1.0, 0.0, 0.0],
+                           [0.0, 1.0, 0.0],
+                           [0.0, 0.0, 1.0]]], dtype=torch.float32)
+    
+    print(f"Input shape: {coords.shape}")
+    
+    # Apply encoding
+    encoded = encoder.encode(coords)
+    print(f"Output shape: {encoded.shape}")
+    print(f"Expected output dim: {encoder.get_output_dim()}")
+    
+    # Verify dimensions
+    expected_dim = 3 * 2 * 4  # 3 coords * 2 functions * 4 freqs = 24
+    assert encoded.shape[-1] == expected_dim, f"Expected {expected_dim}, got {encoded.shape[-1]}"
+    
+    # Test with different batch sizes
+    coords_batch = torch.randn(2, 5, 3)  # Batch of 2, 5 points each
+    encoded_batch = encoder.encode(coords_batch)
+    assert encoded_batch.shape == (2, 5, expected_dim), f"Unexpected batch shape: {encoded_batch.shape}"
+    
+    # Test gradient flow
+    coords.requires_grad_(True)
+    encoded = encoder.encode(coords)
+    loss = encoded.sum()
+    loss.backward()
+    
+    assert coords.grad is not None, "Gradient not computed"
+    print("Gradient flow test passed")
+    
+    print("All tests passed!")
+
+
+if __name__ == "__main__":
+    # Run tests when module is executed directly
+    test_fourier_encoding()

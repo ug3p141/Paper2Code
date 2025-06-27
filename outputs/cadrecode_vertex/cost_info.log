@@ -34,3 +34,237 @@
 🪙 Accumulated total cost so far: $0.46917900
 ============================================
 
+🌟 Usage Summary 🌟
+[ANALYSIS] config.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32461 (Cost: $0.09738300)
+📤 Output tokens: 2262 (Cost: $0.03393000)
+💵 Current total cost: $0.13131300
+🪙 Accumulated total cost so far: $0.60049200
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] utils/fourier_encoding.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32453 (Cost: $0.09735900)
+📤 Output tokens: 1917 (Cost: $0.02875500)
+💵 Current total cost: $0.12611400
+🪙 Accumulated total cost so far: $0.72660600
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] utils/point_cloud_utils.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32455 (Cost: $0.09736500)
+📤 Output tokens: 1753 (Cost: $0.02629500)
+💵 Current total cost: $0.12366000
+🪙 Accumulated total cost so far: $0.85026600
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] utils/cad_validation.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32466 (Cost: $0.09739800)
+📤 Output tokens: 2048 (Cost: $0.03072000)
+💵 Current total cost: $0.12811800
+🪙 Accumulated total cost so far: $0.97838400
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] data/dataset_generator.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32478 (Cost: $0.09743400)
+📤 Output tokens: 2463 (Cost: $0.03694500)
+💵 Current total cost: $0.13437900
+🪙 Accumulated total cost so far: $1.11276300
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] models/point_cloud_projector.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32478 (Cost: $0.09743400)
+📤 Output tokens: 1903 (Cost: $0.02854500)
+💵 Current total cost: $0.12597900
+🪙 Accumulated total cost so far: $1.23874200
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] data/dataset_loader.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32480 (Cost: $0.09744000)
+📤 Output tokens: 2217 (Cost: $0.03325500)
+💵 Current total cost: $0.13069500
+🪙 Accumulated total cost so far: $1.36943700
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] models/cad_recode_model.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32479 (Cost: $0.09743700)
+📤 Output tokens: 2054 (Cost: $0.03081000)
+💵 Current total cost: $0.12824700
+🪙 Accumulated total cost so far: $1.49768400
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] evaluation/metrics.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32467 (Cost: $0.09740100)
+📤 Output tokens: 1719 (Cost: $0.02578500)
+💵 Current total cost: $0.12318600
+🪙 Accumulated total cost so far: $1.62087000
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] training/trainer.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32466 (Cost: $0.09739800)
+📤 Output tokens: 2378 (Cost: $0.03567000)
+💵 Current total cost: $0.13306800
+🪙 Accumulated total cost so far: $1.75393800
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] evaluation/evaluator.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32462 (Cost: $0.09738600)
+📤 Output tokens: 2480 (Cost: $0.03720000)
+💵 Current total cost: $0.13458600
+🪙 Accumulated total cost so far: $1.88852400
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] experiments/run_experiments.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32444 (Cost: $0.09733200)
+📤 Output tokens: 2895 (Cost: $0.04342500)
+💵 Current total cost: $0.14075700
+🪙 Accumulated total cost so far: $2.02928100
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] main.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32430 (Cost: $0.09729000)
+📤 Output tokens: 2543 (Cost: $0.03814500)
+💵 Current total cost: $0.13543500
+🪙 Accumulated total cost so far: $2.16471600
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] config.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 34708 (Cost: $0.10412400)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.16556400
+🪙 Accumulated total cost so far: $2.33028000
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] utils/fourier_encoding.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 38491 (Cost: $0.11547300)
+📤 Output tokens: 2504 (Cost: $0.03756000)
+💵 Current total cost: $0.15303300
+🪙 Accumulated total cost so far: $2.48331300
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] utils/point_cloud_utils.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 40844 (Cost: $0.12253200)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.18397200
+🪙 Accumulated total cost so far: $2.66728500
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] utils/cad_validation.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 45249 (Cost: $0.13574700)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.19718700
+🪙 Accumulated total cost so far: $2.86447200
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] data/dataset_generator.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 49772 (Cost: $0.14931600)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.21075600
+🪙 Accumulated total cost so far: $3.07522800
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] models/point_cloud_projector.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 53336 (Cost: $0.16000800)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.22144800
+🪙 Accumulated total cost so far: $3.29667600
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] data/dataset_loader.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 57753 (Cost: $0.17325900)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.23469900
+🪙 Accumulated total cost so far: $3.53137500
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] models/cad_recode_model.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 61718 (Cost: $0.18515400)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.24659400
+🪙 Accumulated total cost so far: $3.77796900
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] evaluation/metrics.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 65475 (Cost: $0.19642500)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.25786500
+🪙 Accumulated total cost so far: $4.03583400
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] training/trainer.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 70244 (Cost: $0.21073200)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.27217200
+🪙 Accumulated total cost so far: $4.30800600
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] evaluation/evaluator.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 74459 (Cost: $0.22337700)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.28481700
+🪙 Accumulated total cost so far: $4.59282300
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] experiments/run_experiments.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 78989 (Cost: $0.23696700)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.29840700
+🪙 Accumulated total cost so far: $4.89123000
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] main.py
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 82733 (Cost: $0.24819900)
+📤 Output tokens: 4096 (Cost: $0.06144000)
+💵 Current total cost: $0.30963900
+🪙 Accumulated total cost so far: $5.20086900
+============================================
+

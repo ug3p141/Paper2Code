@@ -1,0 +1,288 @@
+# Logic Analysis: main.py
+
+## Overview
+The `main.py` file serves as the central entry point for the CAD-Recode experimental pipeline. It orchestrates the entire workflow from configuration loading to experiment execution, providing a clean interface for researchers to reproduce the paper's results and conduct additional experiments.
+
+## Core Responsibilities
+
+### 1. Configuration Management
+- **Load Configuration**: Parse the `config.yaml` file to extract all experimental parameters
+- **Validate Settings**: Ensure all required parameters are present and within valid ranges
+- **Environment Setup**: Configure paths, device settings, and system parameters
+- **Parameter Override**: Support command-line arguments to override specific config values for ablation studies
+
+### 2. Logging Infrastructure
+- **Multi-level Logging**: Set up comprehensive logging (DEBUG, INFO, WARNING, ERROR)
+- **File and Console Output**: Configure dual logging to both console and log files
+- **Experiment Tracking**: Initialize Weights & Biases (wandb) for experiment monitoring
+- **Reproducibility Logging**: Record all configuration parameters, random seeds, and system information
+
+### 3. Experiment Orchestration
+- **Pipeline Coordination**: Manage the sequence of data generation, training, and evaluation
+- **Resource Management**: Handle GPU memory, file I/O, and computational resources
+- **Error Handling**: Implement robust error recovery and graceful failure handling
+- **Result Aggregation**: Collect and organize results from all experimental components
+
+## Implementation Logic
+
+### Class Structure: Main
+
+#### Initialization (`__init__`)
+```python
+class Main:
+    def __init__(self):
+        # Initialize core attributes
+        self.config = None
+        self.logger = None
+        self.experiment_runner = None
+        self.start_time = None
+```
+
+**Logic Flow:**
+1. Set up argument parser for command-line interface
+2. Initialize empty configuration and logging placeholders
+3. Prepare for experiment state tracking
+
+#### Setup Logging (`setup_logging`)
+```python
+def setup_logging(self) -> None:
+    # Configure logging system based on config.yaml settings
+```
+
+**Logic Flow:**
+1. **Create Log Directory**: Ensure `config.paths.logs_dir` exists
+2. **Configure Formatters**: Set up detailed log formatting with timestamps
+3. **Set Log Levels**: Configure different levels for console vs file output
+4. **Initialize File Handlers**: Create rotating log files to prevent disk overflow
+5. **Setup Console Handler**: Configure colored console output for better UX
+6. **Wandb Integration**: Initialize experiment tracking with project name from config
+7. **System Information Logging**: Record hardware, software, and environment details
+
+**Key Considerations:**
+- Log rotation to prevent disk space issues during long experiments
+- Structured logging format for easy parsing and analysis
+- Separate log levels for debugging vs production runs
+- Integration with wandb for cloud-based experiment tracking
+
+#### Main Execution (`run`)
+```python
+def run(self) -> None:
+    # Main execution pipeline
+```
+
+**Logic Flow:**
+1. **Argument Parsing**: Process command-line arguments for experiment selection
+2. **Configuration Loading**: Load and validate `config.yaml` parameters
+3. **Environment Setup**: Configure device, random seeds, and system settings
+4. **Logging Initialization**: Call `setup_logging()` with validated config
+5. **Experiment Selection**: Determine which experiments to run based on arguments
+6. **Resource Validation**: Check GPU availability, disk space, and dependencies
+7. **Experiment Execution**: Initialize and run ExperimentRunner
+8. **Result Collection**: Aggregate and save all experimental results
+9. **Cleanup**: Proper resource cleanup and final logging
+
+### Command-Line Interface
+
+#### Supported Arguments
+Based on the paper's experimental setup, the CLI should support:
+
+```python
+parser.add_argument('--config', type=str, default='config.yaml',
+                   help='Path to configuration file')
+parser.add_argument('--experiment', type=str, 
+                   choices=['training', 'evaluation', 'ablation', 'cad_qa', 'all'],
+                   default='all', help='Experiment type to run')
+parser.add_argument('--dataset', type=str,
+                   choices=['procedural', 'deepcad', 'fusion360', 'cc3d'],
+                   help='Specific dataset for evaluation')
+parser.add_argument('--model_path', type=str,
+                   help='Path to pre-trained model checkpoint')
+parser.add_argument('--output_dir', type=str,
+                   help='Override output directory')
+parser.add_argument('--debug', action='store_true',
+                   help='Enable debug mode with verbose logging')
+parser.add_argument('--seed', type=int, default=42,
+                   help='Random seed for reproducibility')
+```
+
+### Error Handling Strategy
+
+#### Configuration Validation
+```python
+def validate_config(self, config: Config) -> bool:
+    # Comprehensive configuration validation
+```
+
+**Validation Checks:**
+1. **Model Parameters**: Verify LLM model name, embedding dimensions
+2. **Training Settings**: Validate learning rates, batch sizes, iteration counts
+3. **Data Paths**: Ensure all required directories and files exist
+4. **Hardware Requirements**: Check GPU availability and memory
+5. **Dependency Verification**: Validate CadQuery, transformers, and other libraries
+
+#### Graceful Error Recovery
+```python
+def handle_experiment_error(self, error: Exception, experiment_type: str) -> None:
+    # Implement error recovery strategies
+```
+
+**Recovery Strategies:**
+1. **Checkpoint Recovery**: Resume from last valid checkpoint on training failures
+2. **Memory Management**: Reduce batch size on GPU memory errors
+3. **Data Corruption**: Skip corrupted samples and continue processing
+4. **Network Issues**: Retry model downloads with exponential backoff
+
+### Integration with ExperimentRunner
+
+#### Experiment Selection Logic
+```python
+def select_experiments(self, args) -> List[str]:
+    # Determine which experiments to run based on arguments and config
+```
+
+**Selection Logic:**
+1. **Training Experiment**: Generate procedural dataset and train CAD-Recode
+2. **Evaluation Experiment**: Test on DeepCAD, Fusion360, and CC3D datasets
+3. **Ablation Studies**: Vary model size, dataset size, and architectural components
+4. **CAD-QA Experiment**: Test interpretability with SGP-Bench
+5. **Interactive Editing**: Demonstrate GPT-4o integration for code editing
+
+#### Resource Management
+```python
+def manage_resources(self) -> None:
+    # Handle computational resources and memory management
+```
+
+**Resource Considerations:**
+1. **GPU Memory**: Monitor and optimize memory usage for large point clouds
+2. **Disk Space**: Manage storage for 1M procedural dataset and checkpoints
+3. **CPU Utilization**: Balance data loading and model computation
+4. **Network Bandwidth**: Efficient model downloading and wandb logging
+
+### Reproducibility Guarantees
+
+#### Seed Management
+```python
+def set_random_seeds(self, seed: int) -> None:
+    # Ensure reproducible results across runs
+```
+
+**Seed Setting:**
+1. **Python Random**: Set built-in random module seed
+2. **NumPy**: Configure numpy random state
+3. **PyTorch**: Set torch manual seed for CPU and GPU
+4. **CadQuery**: Ensure deterministic CAD generation where possible
+
+#### Environment Logging
+```python
+def log_environment_info(self) -> None:
+    # Record complete experimental environment
+```
+
+**Environment Information:**
+1. **Hardware**: GPU type, memory, CPU specifications
+2. **Software**: Python version, package versions, CUDA version
+3. **Configuration**: Complete config.yaml contents
+4. **Git Information**: Commit hash, branch, and diff status
+
+### Performance Monitoring
+
+#### Progress Tracking
+```python
+def setup_progress_monitoring(self) -> None:
+    # Initialize progress bars and performance metrics
+```
+
+**Monitoring Components:**
+1. **Training Progress**: Real-time loss curves and validation metrics
+2. **Data Generation**: Progress for 1M sample procedural dataset creation
+3. **Evaluation Progress**: Test-time sampling and metric computation
+4. **Resource Utilization**: GPU memory, disk I/O, and CPU usage
+
+### Result Management
+
+#### Output Organization
+```python
+def organize_results(self, results: dict) -> None:
+    # Structure and save experimental results
+```
+
+**Result Structure:**
+```
+results/
+├── training/
+│   ├── checkpoints/
+│   ├── logs/
+│   └── metrics/
+├── evaluation/
+│   ├── deepcad/
+│   ├── fusion360/
+│   └── cc3d/
+├── ablation/
+│   ├── model_size/
+│   ├── dataset_size/
+│   └── architecture/
+└── cad_qa/
+    ├── sgp_bench/
+    └── editing_examples/
+```
+
+## Dependencies and Imports
+
+### Required Modules
+```python
+import argparse
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import torch
+import wandb
+import yaml
+
+from config import Config
+from experiments.run_experiments import ExperimentRunner
+```
+
+### External Dependencies
+- **Configuration**: `config.py` for parameter management
+- **Experiments**: `experiments/run_experiments.py` for experiment orchestration
+- **System**: Standard library modules for file I/O, logging, and argument parsing
+- **Deep Learning**: PyTorch for device management and random seeds
+- **Tracking**: Wandb for experiment monitoring and result visualization
+
+## Error Scenarios and Handling
+
+### Critical Failures
+1. **Configuration Missing**: Graceful exit with helpful error message
+2. **GPU Unavailable**: Fallback to CPU with performance warnings
+3. **Insufficient Memory**: Automatic batch size reduction and retry
+4. **Dependency Missing**: Clear installation instructions and exit
+
+### Recoverable Errors
+1. **Network Timeouts**: Retry with exponential backoff
+2. **Disk Space Low**: Cleanup temporary files and continue
+3. **Single Sample Failure**: Skip corrupted data and log warning
+4. **Checkpoint Corruption**: Revert to previous valid checkpoint
+
+## Performance Considerations
+
+### Memory Optimization
+- Lazy loading of large datasets
+- Gradient checkpointing for memory-intensive training
+- Automatic garbage collection at experiment boundaries
+
+### Computational Efficiency
+- Multi-processing for data generation and loading
+- Efficient point cloud sampling algorithms
+- Optimized metric computation with vectorized operations
+
+### I/O Optimization
+- Asynchronous file operations where possible
+- Compressed storage for large datasets
+- Efficient checkpoint saving and loading
+
+This comprehensive logic analysis provides the foundation for implementing a robust, maintainable, and reproducible main entry point that faithfully follows the CAD-Recode paper's methodology while providing the flexibility needed for scientific experimentation and ablation studies.

@@ -1,0 +1,238 @@
+# Logic Analysis: data/dataset_generator.py
+
+## Overview
+The `data/dataset_generator.py` module implements the procedural dataset generation pipeline that creates 1 million CAD sequences as CadQuery Python code. This is a critical component that addresses the data limitation mentioned in the paper by providing controlled generation of diverse CAD models with specific features and design patterns.
+
+## Core Requirements from Paper
+
+### 1. Algorithm Implementation
+- **Algorithm 1 (Generate2DSketch)**: Creates 2D sketches by combining 3-8 primitive shapes (circles, rotated rectangles) through boolean operations (union, cut)
+- **Algorithm 2 (GenerateCAD)**: Generates 3D CAD models by extruding sketches on random planes and combining through union operations
+- **Validation Framework**: Ensures syntactic (φ_syn) and CAD-specific (φ_cad) validity of generated code
+
+### 2. Dataset Characteristics
+- **Size**: 1 million unique CAD sequences
+- **Parameter Quantization**: Coordinates in range [-100, 100] with resolution 1
+- **Normalization**: Models fit within unit bounding box
+- **Modularity**: Incorporates reuse of design elements, abstraction to higher-level shapes
+- **Uniqueness**: Duplicate detection to ensure each sample is unique
+
+## Class Design Analysis
+
+### DatasetGenerator Class
+
+#### Initialization Logic
+```python
+def __init__(self, config: dict):
+```
+**Purpose**: Initialize generator with configuration parameters
+**Key Responsibilities**:
+- Store configuration from `config.yaml` (coordinate ranges, resolution, primitive counts)
+- Initialize random seed for reproducibility
+- Set up validation components
+- Configure output paths and logging
+
+**Configuration Dependencies**:
+- `data.procedural_dataset.size` (1M samples)
+- `data.procedural_dataset.num_primitives_range` ([3, 8])
+- `data.procedural_dataset.coordinate_range` ([-100, 100])
+- `data.procedural_dataset.coordinate_resolution` (1)
+
+#### Core Generation Methods
+
+#### 1. generate_sketch() Method
+```python
+def generate_sketch() -> dict:
+```
+**Purpose**: Implements Algorithm 1 from the paper
+**Logic Flow**:
+1. **Primitive Count Selection**: Randomly choose 3-8 primitives per sketch
+2. **Shape Generation Loop**:
+   - Randomly select primitive type (Circle, RotatedRectangle)
+   - Generate random parameters within quantized ranges
+   - Select boolean operation (Union for addition, Cut for subtraction)
+   - Apply operation to composite shape
+3. **Boundary Extraction**:
+   - Extract boundary loops from composite shape
+   - Analyze each loop to get parametric curves (lines, arcs, circles)
+   - Determine inner/outer loop classification
+4. **Validation**:
+   - Ensure loops don't intersect
+   - Verify each primitive has length > 0
+   - Check topological validity
+
+**Return Structure**:
+```python
+{
+    'boundary_components': List[Tuple[List[curve], bool]],  # (edges, is_outer)
+    'primitives_used': List[str],  # Track primitive types
+    'parameters': dict  # Store generation parameters
+}
+```
+
+**Key Considerations**:
+- **Quantization**: All coordinates must be integers in [-100, 100] range
+- **Geometric Validity**: Ensure shapes are closed and non-degenerate
+- **Modularity**: Track reusable elements (centers, radii) for later abstraction
+
+#### 2. generate_cad_model() Method
+```python
+def generate_cad_model() -> str:
+```
+**Purpose**: Implements Algorithm 2 from the paper
+**Logic Flow**:
+1. **Initialization**:
+   - Create empty CAD model structure
+   - Generate random reference planes (canonical planes with random translations)
+2. **Sketch Processing Loop**:
+   - Generate multiple sketches using `generate_sketch()`
+   - Assign each sketch to a random plane
+   - Create extrusion parameters (random heights)
+3. **3D Volume Creation**:
+   - Extrude each sketch to create 3D volumes
+   - Apply boolean union operations to combine volumes
+4. **Model Finalization**:
+   - Normalize model to unit bounding box
+   - Apply parameter quantization
+   - Perform code simplification (abstract to higher-level shapes)
+5. **Code Generation**:
+   - Convert geometric operations to CadQuery Python syntax
+   - Ensure proper import statements and structure
+
+**Code Structure Template**:
+```python
+# Generated code follows consistent pattern:
+import cadquery as cq
+w0 = cq.Workplane('XY', origin=(x, y, z))
+r = w0.sketch()...operations...finalize().extrude(height)
+.union(w0.sketch()...operations...finalize().extrude(height))
+```
+
+**Simplification Logic**:
+- **Rectangle Detection**: Four-line closed loops → `rect()` abstraction
+- **Box Detection**: Rectangle + extrusion → `box()` abstraction  
+- **Cylinder Detection**: Circle + extrusion → `cylinder()` abstraction
+- **Variable Reuse**: Common coordinates, radii, heights as shared variables
+
+#### 3. validate_code() Method
+```python
+def validate_code(code: str) -> bool:
+```
+**Purpose**: Ensure generated code meets φ_syn and φ_cad criteria
+**Validation Steps**:
+1. **Syntax Validation (φ_syn)**:
+   - Parse Python AST to check syntax correctness
+   - Verify import statements and variable declarations
+   - Check expression and statement structure
+2. **CadQuery Validation (φ_cad)**:
+   - Verify CadQuery library syntax compliance
+   - Check method call chains and parameter validity
+   - Ensure geometric operations are properly sequenced
+3. **Geometric Validation**:
+   - Execute code in isolated environment
+   - Use BRepCheck Analyzer (from PythonOCC) as mentioned in paper
+   - Verify resulting model is geometrically valid
+   - Check that extrusions apply only to closed loops
+   - Ensure no negative radii or invalid parameters
+4. **Execution Safety**:
+   - Timeout protection (30 seconds from config)
+   - Error handling for runtime exceptions
+   - Memory usage monitoring
+
+#### 4. generate_dataset() Method
+```python
+def generate_dataset(size: int) -> List[dict]:
+```
+**Purpose**: Orchestrate generation of complete dataset
+**Logic Flow**:
+1. **Setup**:
+   - Initialize progress tracking
+   - Set up duplicate detection mechanism
+   - Prepare output storage
+2. **Generation Loop**:
+   - Generate CAD model code using `generate_cad_model()`
+   - Validate code using `validate_code()`
+   - Check for duplicates using duplicate detection protocol
+   - If valid and unique, add to dataset
+   - Continue until target size reached
+3. **Progress Management**:
+   - Log generation progress every 1000 samples
+   - Handle generation failures gracefully
+   - Maintain statistics on success/failure rates
+4. **Output Preparation**:
+   - Save generated codes to files
+   - Create point clouds by executing codes and sampling surfaces
+   - Prepare dataset in format compatible with DataLoader
+
+**Dataset Sample Structure**:
+```python
+{
+    'code': str,  # CadQuery Python code
+    'point_cloud': np.ndarray,  # Sampled points from executed model
+    'metadata': {
+        'primitives_count': int,
+        'operations_count': int,
+        'complexity_score': float,
+        'generation_timestamp': str
+    }
+}
+```
+
+## Key Implementation Considerations
+
+### 1. Randomization Strategy
+- **Deterministic Seeding**: Support reproducible generation for research
+- **Parameter Distributions**: 
+  - Uniform distribution for coordinates within quantized range
+  - Gaussian distribution for sizes/radii with clipping
+  - Discrete uniform for primitive counts (3-8)
+
+### 2. Geometric Constraints
+- **Minimum Feature Size**: Ensure features are larger than quantization resolution
+- **Aspect Ratio Limits**: Prevent extremely thin or flat shapes
+- **Intersection Handling**: Manage complex boolean operations carefully
+- **Plane Selection**: Balance between canonical planes (XY, XZ, YZ) and translated variants
+
+### 3. Code Quality and Modularity
+- **Variable Naming**: Consistent naming conventions (w0, w1 for workplanes)
+- **Code Formatting**: Proper indentation and line breaks
+- **Comment Generation**: Optional comments for complex operations
+- **Modular Patterns**: Reuse of common coordinates and parameters
+
+### 4. Performance Optimization
+- **Batch Processing**: Generate multiple models before validation
+- **Caching**: Cache validated primitives and operations
+- **Parallel Generation**: Support multi-process generation for large datasets
+- **Memory Management**: Clear intermediate geometric objects
+
+### 5. Error Handling and Robustness
+- **Graceful Failures**: Continue generation despite individual failures
+- **Validation Timeouts**: Prevent hanging on complex geometric operations
+- **Resource Monitoring**: Track memory and CPU usage
+- **Recovery Mechanisms**: Retry failed generations with different parameters
+
+### 6. Duplicate Detection Protocol
+- **Code Hashing**: Use content-based hashing for duplicate detection
+- **Geometric Comparison**: Compare resulting geometries for near-duplicates
+- **Parameter Normalization**: Account for equivalent parameter representations
+- **Efficiency**: Use efficient data structures (sets, bloom filters) for large-scale detection
+
+## Integration Points
+
+### Dependencies
+- **utils/cad_validation.py**: For φ_syn and φ_cad validation functions
+- **cadquery**: For code execution and geometric operations
+- **numpy**: For numerical operations and array handling
+- **random**: For controlled randomization
+
+### Configuration Integration
+- Read all parameters from `config.yaml` via `config.data.procedural_dataset`
+- Support runtime parameter adjustment for ablation studies
+- Maintain backward compatibility with different configuration versions
+
+### Output Format
+- Generate dataset compatible with `data/dataset_loader.py`
+- Support multiple output formats (JSON, pickle, HDF5)
+- Include comprehensive metadata for analysis and debugging
+
+This comprehensive logic analysis provides the foundation for implementing a robust, scalable, and paper-compliant procedural dataset generator that will create the 1 million CAD sequences needed to train CAD-Recode effectively.

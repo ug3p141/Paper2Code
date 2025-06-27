@@ -1,0 +1,242 @@
+# Logic Analysis: evaluation/evaluator.py
+
+## Overview
+The `evaluation/evaluator.py` module implements the comprehensive evaluation pipeline for CAD-Recode, focusing on test-time sampling strategy and multi-dataset evaluation as described in Section 5.1 of the paper. This module is critical for reproducing the paper's experimental results across DeepCAD, Fusion360, and CC3D datasets.
+
+## Core Responsibilities
+
+### 1. Test-Time Sampling Strategy (Section 4.3)
+- **Multiple Candidate Generation**: Generate 10 distinct CAD code candidates per input point cloud
+- **Point Cloud Sampling Variation**: Each candidate uses different random sampling of input points
+- **Best Candidate Selection**: Select optimal candidate based on validation criteria
+- **Sampling Strategy**: Implement "different point cloud sampling" as specified in config
+
+### 2. Multi-Dataset Evaluation (Section 5.1)
+- **Dataset Support**: Handle DeepCAD (8046 models), Fusion360 (1725 models), CC3D (2973 models)
+- **Metric Computation**: Calculate Chamfer Distance, IoU, and Invalidity Ratio for each dataset
+- **Result Aggregation**: Collect and organize results for comparison with baselines
+- **Statistical Analysis**: Compute mean and median values as reported in paper
+
+### 3. Code Validation and Execution
+- **Syntax Validation**: Ensure generated Python code is syntactically correct
+- **CAD Semantics**: Validate CadQuery library compatibility
+- **Geometric Validation**: Verify generated CAD models are geometrically valid
+- **Execution Safety**: Handle timeouts and errors during code execution
+
+## Class Design: Evaluator
+
+### Initialization
+```python
+def __init__(self, model: CADRecodeModel, test_loaders: dict, config: dict)
+```
+**Logic Flow**:
+1. Store model reference for inference
+2. Initialize test data loaders for all datasets (DeepCAD, Fusion360, CC3D)
+3. Create Metrics instance for evaluation computations
+4. Initialize CADValidator for code validation
+5. Extract evaluation configuration (num_candidates=10, sampling strategy)
+6. Set up result storage structures
+7. Configure device and inference settings
+
+**Key Considerations**:
+- Model should be in evaluation mode (.eval())
+- Test loaders must provide point clouds and ground truth data
+- Configuration validation for required evaluation parameters
+- Memory management for large-scale evaluation
+
+### Core Method: generate_multiple_candidates()
+```python
+def generate_multiple_candidates(self, point_cloud: torch.Tensor, num_candidates: int = 10) -> List[str]
+```
+**Logic Flow**:
+1. **Input Validation**: Check point cloud dimensions and device placement
+2. **Candidate Generation Loop** (repeat num_candidates times):
+   - Apply different random sampling to point cloud (256 points via furthest point sampling)
+   - Optional: Add Gaussian noise (if specified in config)
+   - Pass through model.generate_code() with appropriate max_length
+   - Collect generated code string
+3. **Code Validation**: Filter candidates through CADValidator.is_valid_code()
+4. **Return Strategy**: Return all valid candidates or best N candidates
+
+**Implementation Details**:
+- Each sampling iteration should use different random seeds
+- Handle model inference in no_grad() context
+- Implement timeout mechanism for code generation
+- Log invalid generations for analysis
+- Consider memory efficiency for batch processing
+
+### Core Method: evaluate_dataset()
+```python
+def evaluate_dataset(self, dataset_name: str) -> dict
+```
+**Logic Flow**:
+1. **Dataset Setup**:
+   - Load appropriate test data loader (DeepCAD/Fusion360/CC3D)
+   - Initialize metric accumulators (CD, IoU, IR)
+   - Set up progress tracking
+2. **Evaluation Loop** (for each test sample):
+   - Extract point cloud and ground truth data
+   - Generate multiple candidates using generate_multiple_candidates()
+   - **Candidate Selection Strategy**:
+     - If multiple valid candidates: select best based on criteria (not specified in paper)
+     - If no valid candidates: record as invalid
+     - If single valid candidate: use directly
+   - **Metric Computation**:
+     - Execute selected CAD code to generate 3D model
+     - Convert to point cloud/mesh for metric computation
+     - Compute Chamfer Distance (8192 points, scale by 1000)
+     - Compute IoU from meshes
+     - Track invalidity cases
+3. **Result Aggregation**:
+   - Compute mean and median Chamfer Distance
+   - Compute mean IoU percentage
+   - Compute Invalidity Ratio percentage
+   - Generate statistical summaries
+
+**Error Handling**:
+- Handle CAD code execution failures gracefully
+- Manage memory for large point clouds
+- Implement robust mesh processing for IoU computation
+- Log detailed error information for debugging
+
+### Core Method: evaluate_all_datasets()
+```python
+def evaluate_all_datasets(self) -> dict
+```
+**Logic Flow**:
+1. **Dataset Iteration**:
+   - Evaluate each dataset (DeepCAD, Fusion360, CC3D) sequentially
+   - Call evaluate_dataset() for each
+   - Collect individual dataset results
+2. **Cross-Dataset Analysis**:
+   - Compare performance across datasets
+   - Identify dataset-specific patterns
+   - Generate comparative statistics
+3. **Result Organization**:
+   - Structure results for easy comparison with paper Tables 1-2
+   - Include both individual and aggregate metrics
+   - Format for baseline comparison
+
+### Supporting Methods
+
+#### validate_and_execute_code()
+```python
+def validate_and_execute_code(self, code: str) -> tuple[bool, Any]
+```
+**Logic Flow**:
+1. Syntax validation using CADValidator
+2. Safe code execution with timeout (30 seconds from config)
+3. Geometric validation of resulting CAD model
+4. Return validation status and CAD model object
+
+#### compute_metrics_for_sample()
+```python
+def compute_metrics_for_sample(self, pred_code: str, gt_data: dict) -> dict
+```
+**Logic Flow**:
+1. Execute predicted code to generate CAD model
+2. Convert CAD model to point cloud/mesh
+3. Extract ground truth geometry
+4. Compute all metrics (CD, IoU) using Metrics class
+5. Return metric dictionary
+
+#### select_best_candidate()
+```python
+def select_best_candidate(self, candidates: List[str], point_cloud: torch.Tensor) -> str
+```
+**Logic Flow** (Implementation Strategy - not specified in paper):
+1. **Validation Filter**: Remove invalid candidates
+2. **Ranking Strategy** (possible approaches):
+   - Geometric complexity (prefer simpler valid models)
+   - Code length (prefer more concise code)
+   - Execution success rate
+   - Random selection from valid candidates
+3. Return best candidate or None if all invalid
+
+## Integration with Other Modules
+
+### Dependencies
+1. **models/cad_recode_model.py**: 
+   - Use CADRecodeModel.generate_code() for inference
+   - Handle model device placement and memory management
+2. **evaluation/metrics.py**:
+   - Call Metrics.compute_chamfer_distance() with 8192 points
+   - Call Metrics.compute_iou() for mesh-based IoU
+   - Use Metrics.execute_cad_code() for safe execution
+3. **utils/cad_validation.py**:
+   - Use CADValidator.is_valid_code() for comprehensive validation
+   - Handle validation timeouts and error reporting
+
+### Configuration Integration
+- **evaluation.num_candidates**: Number of candidates to generate (default: 10)
+- **evaluation.metrics.chamfer_distance.num_points**: Points for CD computation (8192)
+- **evaluation.metrics.chamfer_distance.scale_factor**: CD scaling (1000)
+- **cadquery.validation_timeout**: Code execution timeout (30 seconds)
+- **data.point_cloud.num_sample_points**: Points for metric computation
+
+## Performance Considerations
+
+### Memory Management
+- **Batch Processing**: Process samples individually to manage GPU memory
+- **Model Caching**: Keep model loaded but clear intermediate tensors
+- **Point Cloud Storage**: Efficient tensor operations for large point clouds
+
+### Computational Efficiency
+- **Parallel Candidate Generation**: Potential for parallel code generation
+- **Metric Caching**: Cache expensive metric computations where possible
+- **Early Termination**: Stop generation if sufficient valid candidates found
+
+### Scalability
+- **Large Dataset Handling**: Efficient iteration over thousands of test samples
+- **Progress Tracking**: Detailed progress reporting for long evaluations
+- **Checkpointing**: Save intermediate results for resumable evaluation
+
+## Error Handling and Robustness
+
+### Code Execution Safety
+- **Timeout Mechanisms**: Prevent infinite loops in generated code
+- **Exception Handling**: Graceful handling of CadQuery execution errors
+- **Resource Cleanup**: Proper cleanup of temporary CAD objects
+
+### Validation Robustness
+- **Multiple Validation Levels**: Syntax, semantics, and geometric validation
+- **Graceful Degradation**: Continue evaluation even with individual failures
+- **Detailed Logging**: Comprehensive error logging for debugging
+
+### Result Integrity
+- **Metric Validation**: Ensure computed metrics are within expected ranges
+- **Statistical Consistency**: Verify result consistency across runs
+- **Baseline Comparison**: Structure results for easy comparison with paper
+
+## Expected Output Format
+
+### Dataset Results
+```python
+{
+    "dataset_name": {
+        "mean_cd": float,      # Mean Chamfer Distance (×1000)
+        "median_cd": float,    # Median Chamfer Distance (×1000)
+        "mean_iou": float,     # Mean IoU percentage
+        "invalidity_ratio": float,  # Invalidity Ratio percentage
+        "num_samples": int,    # Total samples evaluated
+        "num_valid": int,      # Valid predictions
+        "detailed_results": List[dict]  # Per-sample results
+    }
+}
+```
+
+### Comprehensive Results
+```python
+{
+    "deepcad": {...},
+    "fusion360": {...},
+    "cc3d": {...},
+    "summary": {
+        "overall_performance": dict,
+        "dataset_comparison": dict,
+        "baseline_comparison": dict
+    }
+}
+```
+
+This logic analysis provides a comprehensive framework for implementing the evaluation pipeline that accurately reproduces the experimental methodology described in the CAD-Recode paper, ensuring faithful replication of the reported results across all test datasets.

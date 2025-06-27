@@ -1,0 +1,238 @@
+# Logic Analysis: data/dataset_loader.py
+
+## Overview
+The `dataset_loader.py` module is responsible for loading and preprocessing all datasets used in CAD-Recode training and evaluation. It serves as the central data pipeline that bridges raw data sources with the model training/evaluation processes. This module must handle four distinct data sources while providing a unified interface for point cloud preprocessing, tokenization, and PyTorch Dataset/DataLoader creation.
+
+## Core Responsibilities
+
+### 1. Multi-Dataset Loading Strategy
+The module must handle four different dataset types with varying characteristics:
+
+**Procedural Dataset (Training)**:
+- Load 1M procedurally generated CAD sequences from `dataset_generator.py`
+- Each sample contains: CadQuery Python code, corresponding 3D model, point cloud
+- Data format: Generated on-demand or pre-computed and cached
+- Validation: All samples should be pre-validated during generation
+
+**DeepCAD Dataset (Training/Testing)**:
+- Load existing DeepCAD dataset (160k training, 8046 testing)
+- Convert from original DeepCAD format to CadQuery Python code
+- Generate point clouds by sampling from provided meshes
+- Handle format conversion and ensure code validity
+
+**Fusion360 Dataset (Testing)**:
+- Load 1725 test samples from Fusion360 dataset
+- Similar preprocessing to DeepCAD: mesh → point cloud, format conversion
+- Maintain compatibility with existing evaluation protocols
+
+**CC3D Dataset (Testing)**:
+- Load 2973 real-world samples with pre-existing point clouds from 3D scans
+- Handle noisy, incomplete point clouds (surface noise, missing parts, smoothed edges)
+- No mesh-to-point-cloud conversion needed
+- May require additional preprocessing for scan artifacts
+
+### 2. Point Cloud Preprocessing Pipeline
+Implement standardized preprocessing following paper specifications:
+
+**Furthest Point Sampling**:
+- Downsample all point clouds to exactly 256 points (config: `model.num_points`)
+- Use furthest point sampling algorithm from `utils/point_cloud_utils.py`
+- Ensure consistent sampling across training and evaluation
+
+**Coordinate Normalization**:
+- Normalize point clouds to unit bounding box centered at origin
+- Follow paper's normalization strategy for procedural dataset
+- Maintain geometric relationships while standardizing scale
+
+**Data Augmentation (Training Only)**:
+- Apply Gaussian noise with probability 0.5 (config: `training.noise_probability`)
+- Noise parameters: mean=0, std=0.01 (config: `training.noise_std`)
+- Only apply during training, not evaluation
+
+**Fourier Positional Encoding Integration**:
+- Prepare point clouds for Fourier encoding in the projector
+- Ensure coordinate format compatibility with `utils/fourier_encoding.py`
+
+### 3. Code Tokenization and Validation
+Handle CadQuery Python code processing:
+
+**Tokenization Strategy**:
+- Use HuggingFace tokenizer from Qwen2-1.5B model
+- Add special tokens: `<s>` (start) and `<e>` (end) from config
+- Handle variable-length sequences with appropriate padding/truncation
+- Maintain consistency with training objective (next-token prediction)
+
+**Code Validation Integration**:
+- Validate all loaded codes using `utils/cad_validation.py`
+- Filter out invalid samples during loading
+- Log validation statistics for dataset quality assessment
+- Handle validation timeouts gracefully
+
+**Format Conversion for Legacy Datasets**:
+- Convert DeepCAD/Fusion360 formats to CadQuery Python code
+- Ensure semantic equivalence between original and converted representations
+- Validate converted code for syntax and geometric correctness
+
+### 4. PyTorch Dataset/DataLoader Architecture
+
+**Custom Dataset Classes**:
+```python
+# Conceptual structure - not actual code
+class CADDataset(torch.utils.data.Dataset):
+    def __init__(self, data_samples, tokenizer, config, is_training=False):
+        # Initialize with preprocessed samples
+        # Store configuration and training flags
+        
+    def __len__(self):
+        # Return dataset size
+        
+    def __getitem__(self, idx):
+        # Return: {
+        #   'point_cloud': torch.Tensor,  # [256, 3]
+        #   'input_ids': torch.Tensor,    # Tokenized code
+        #   'attention_mask': torch.Tensor,
+        #   'labels': torch.Tensor,       # For training loss
+        #   'raw_code': str,              # Original code for validation
+        #   'metadata': dict              # Sample information
+        # }
+```
+
+**DataLoader Configuration**:
+- Batch size: 18 (config: `training.batch_size`)
+- Collate function for variable-length sequences
+- Appropriate shuffling for training vs. deterministic for evaluation
+- Memory-efficient loading for large datasets
+
+### 5. Memory and Performance Optimization
+
+**Lazy Loading Strategy**:
+- Implement lazy loading for large datasets (especially 1M procedural samples)
+- Cache frequently accessed samples in memory
+- Use memory mapping for large point cloud arrays
+
+**Efficient Point Cloud Storage**:
+- Store point clouds in compressed format when possible
+- Pre-compute and cache furthest point sampling results
+- Balance memory usage vs. computation time
+
+**Batch Processing Optimization**:
+- Implement efficient batching for point clouds
+- Handle variable-length code sequences with minimal padding
+- Optimize data transfer to GPU
+
+### 6. Configuration Integration
+Leverage config.yaml settings throughout the module:
+
+**Dataset Paths and Sizes**:
+- Use `data.datasets.*` for dataset-specific configurations
+- Respect `data.procedural_dataset.size` for procedural data loading
+- Handle `data.point_cloud.*` settings for preprocessing
+
+**Training Parameters**:
+- Apply `training.noise_*` settings for data augmentation
+- Use `model.num_points` for point cloud sampling
+- Integrate `model.start_token` and `model.end_token` for tokenization
+
+**System Configuration**:
+- Respect `system.num_workers` for DataLoader parallelization
+- Use `system.pin_memory` for GPU transfer optimization
+
+## Key Implementation Challenges
+
+### 1. Dataset Format Heterogeneity
+Each dataset has different formats and requirements:
+- Procedural: Generated CadQuery code with synthetic models
+- DeepCAD/Fusion360: Requires format conversion from proprietary representations
+- CC3D: Real-world scans with artifacts and noise
+
+**Solution Strategy**:
+- Implement dataset-specific loading methods
+- Use adapter pattern for format conversion
+- Maintain unified output interface across all datasets
+
+### 2. Memory Management for Large Datasets
+The 1M procedural dataset requires careful memory management:
+- Cannot load entire dataset into memory simultaneously
+- Need efficient caching and prefetching strategies
+- Balance between I/O and memory usage
+
+**Solution Strategy**:
+- Implement streaming dataset loading
+- Use HDF5 or similar format for efficient access
+- Implement LRU cache for frequently accessed samples
+
+### 3. Code Validation Performance
+Validating 1M+ code samples can be computationally expensive:
+- CadQuery code execution for geometric validation
+- Syntax parsing for Python validation
+- Timeout handling for problematic code
+
+**Solution Strategy**:
+- Implement parallel validation processing
+- Cache validation results to avoid recomputation
+- Use fast syntax checking before expensive geometric validation
+
+### 4. Cross-Dataset Consistency
+Ensure consistent preprocessing across different data sources:
+- Point cloud normalization strategies
+- Coordinate system alignment
+- Scale and orientation consistency
+
+**Solution Strategy**:
+- Implement centralized preprocessing functions
+- Validate consistency through statistical analysis
+- Document and test preprocessing pipeline thoroughly
+
+## Integration Points
+
+### Dependencies on Other Modules
+- `utils/point_cloud_utils.py`: For furthest point sampling, normalization, noise addition
+- `utils/cad_validation.py`: For code validation and filtering
+- `data/dataset_generator.py`: For procedural dataset access
+- `config.py`: For all configuration parameters
+
+### Interface with Training Pipeline
+- Provide consistent DataLoader interface for `training/trainer.py`
+- Support both training and validation data loading
+- Handle epoch-based vs. iteration-based training
+
+### Interface with Evaluation Pipeline
+- Provide test dataset loaders for `evaluation/evaluator.py`
+- Support deterministic sampling for reproducible evaluation
+- Handle multiple test datasets with consistent interface
+
+## Error Handling and Robustness
+
+### Data Quality Assurance
+- Validate all loaded samples for completeness
+- Handle corrupted or missing files gracefully
+- Provide detailed logging for data loading issues
+
+### Graceful Degradation
+- Continue loading when individual samples fail validation
+- Provide fallback strategies for missing datasets
+- Report data quality statistics and issues
+
+### Reproducibility
+- Ensure deterministic behavior when required
+- Support random seed setting for consistent data augmentation
+- Document all preprocessing steps for reproducibility
+
+## Testing and Validation Strategy
+
+### Unit Testing
+- Test each dataset loading method independently
+- Validate preprocessing pipeline components
+- Test tokenization and validation integration
+
+### Integration Testing
+- Test complete data loading pipeline
+- Validate consistency across different datasets
+- Test memory usage and performance characteristics
+
+### Data Quality Validation
+- Statistical analysis of loaded datasets
+- Comparison with paper-reported dataset characteristics
+- Validation of preprocessing pipeline correctness
+
+This comprehensive logic analysis provides the foundation for implementing a robust, efficient, and maintainable dataset loading system that supports all experimental requirements of the CAD-Recode paper while ensuring reproducibility and performance.

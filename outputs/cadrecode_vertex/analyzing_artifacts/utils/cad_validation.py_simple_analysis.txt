@@ -1,0 +1,216 @@
+# Logic Analysis: utils/cad_validation.py
+
+## Overview
+This module implements the critical validation framework for CAD code as specified in the paper's problem formulation (Section 4.1). It provides the validation functions φ_syn and φ_cad that ensure generated code satisfies both Python syntax requirements and CAD-specific semantic and geometric constraints.
+
+## Core Theoretical Foundation
+
+### Validation Functions from Paper
+- **φ_syn(w)**: Validates Python programming syntax (variable declarations, expression syntax, statement structure)
+- **φ_cad(w)**: Validates CAD-specific rules including:
+  - CadQuery library syntax validity
+  - Geometric validity of reconstructed models
+  - Constraint satisfaction (e.g., extrusion only on closed loops, positive radii)
+
+### Valid CAD Code Definition
+```
+C = {w ∈ Σ* | φ_syn(w) ∧ φ_cad(w)}
+```
+Where C represents the set of all valid CAD codes that satisfy both validation functions.
+
+## Class Architecture
+
+### CADValidator Class
+**Purpose**: Central validation orchestrator that implements all validation logic
+**Key Responsibilities**:
+- Coordinate syntax, semantic, and geometric validation
+- Provide unified validation interface for other modules
+- Handle error reporting and debugging information
+- Manage validation timeouts and resource constraints
+
+## Method-Level Logic Analysis
+
+### 1. validate_syntax(code: str) -> bool
+**Purpose**: Implements φ_syn validation for Python syntax correctness
+
+**Logic Flow**:
+1. **AST Parsing**: Use Python's `ast` module to parse the code string
+   - Catch `SyntaxError` exceptions for malformed Python
+   - Validate proper indentation, parentheses matching, statement structure
+   
+2. **Import Statement Validation**: 
+   - Ensure code starts with required CadQuery import: `import cadquery as cq`
+   - Check for prohibited imports that might cause security issues
+   
+3. **Variable Declaration Checks**:
+   - Verify proper variable naming conventions
+   - Check for undefined variable usage
+   - Validate assignment syntax
+   
+4. **Expression Syntax Validation**:
+   - Verify method chaining syntax (critical for CadQuery fluent API)
+   - Check parentheses balancing in complex expressions
+   - Validate numeric literal formats
+
+**Error Handling**: Return False for any syntax errors, log specific error details for debugging
+
+### 2. validate_cad_semantics(code: str) -> bool
+**Purpose**: Validates CadQuery library-specific syntax and semantic rules
+
+**Logic Flow**:
+1. **CadQuery API Validation**:
+   - Parse AST to extract method calls
+   - Verify all called methods exist in CadQuery API
+   - Check method parameter counts and types
+   - Validate method chaining sequences (e.g., sketch() before segment())
+
+2. **Workplane Validation**:
+   - Ensure proper workplane initialization with valid plane specifications
+   - Check origin coordinates are within reasonable bounds
+   - Validate plane orientation vectors
+
+3. **Geometric Primitive Validation**:
+   - **Circles**: Verify positive radius values, valid center coordinates
+   - **Lines/Segments**: Check endpoint coordinates are distinct
+   - **Arcs**: Validate sweep angles, endpoint consistency
+   - **Rectangles/Boxes**: Ensure positive dimensions
+
+4. **Operation Sequence Validation**:
+   - Verify extrusion operations follow sketch completion
+   - Check union operations are applied to valid geometries
+   - Validate boolean operation order and compatibility
+
+5. **Parameter Range Validation**:
+   - Coordinates within quantization range [-100, 100] as per paper
+   - Dimensions respect minimum resolution of 1 unit
+   - Extrusion distances are positive and reasonable
+
+### 3. validate_geometric(code: str) -> bool
+**Purpose**: Validates geometric consistency and executability
+
+**Logic Flow**:
+1. **Safe Code Execution**:
+   - Execute code in isolated subprocess with timeout (30s from config)
+   - Capture execution errors and geometry creation failures
+   - Monitor memory usage to prevent resource exhaustion
+
+2. **Geometric Constraint Validation**:
+   - **Closed Loop Verification**: Ensure sketches form closed boundaries for extrusion
+   - **Self-Intersection Checks**: Detect and reject self-intersecting sketches
+   - **Geometric Feasibility**: Verify primitives can be constructed with given parameters
+
+3. **CAD Model Validation**:
+   - Use PythonOCC's BRepCheck_Analyzer for geometric validity (as mentioned in paper)
+   - Check resulting solid is manifold and well-formed
+   - Verify model has positive volume
+
+4. **Dimensional Consistency**:
+   - Ensure all geometric features have dimensions above quantization resolution
+   - Check that model fits within reasonable bounding box
+   - Validate coordinate system consistency
+
+**Error Recovery**: Gracefully handle execution failures, provide meaningful error messages
+
+### 4. is_valid_code(code: str) -> bool
+**Purpose**: Master validation method implementing the complete validation pipeline
+
+**Logic Flow**:
+1. **Sequential Validation**:
+   ```
+   return validate_syntax(code) ∧ validate_cad_semantics(code) ∧ validate_geometric(code)
+   ```
+
+2. **Short-Circuit Evaluation**: Stop at first validation failure for efficiency
+
+3. **Comprehensive Error Reporting**: 
+   - Log which validation stage failed
+   - Provide specific error details for debugging
+   - Track validation statistics for dataset generation
+
+## Integration Points
+
+### With Dataset Generator
+- Validate procedurally generated codes before inclusion in training dataset
+- Provide feedback for generation algorithm refinement
+- Ensure duplicate detection through code normalization
+
+### With Model Training/Evaluation
+- Filter invalid predictions during evaluation
+- Compute Invalidity Ratio (IR) metric
+- Validate generated candidates in test-time sampling
+
+### With Configuration System
+- Use validation timeout from config.yaml (30 seconds)
+- Respect coordinate ranges and resolution constraints
+- Apply CadQuery-specific settings
+
+## Error Handling Strategy
+
+### Exception Management
+1. **Syntax Errors**: Catch and log AST parsing failures
+2. **Import Errors**: Handle missing CadQuery installation
+3. **Execution Timeouts**: Prevent hanging on infinite loops or complex geometry
+4. **Memory Errors**: Detect and handle excessive memory usage
+5. **Geometric Errors**: Capture CadQuery/PythonOCC geometry creation failures
+
+### Logging and Debugging
+- Detailed error logs for failed validations
+- Performance metrics for validation timing
+- Statistics on common failure modes
+- Debug mode for verbose validation reporting
+
+## Performance Considerations
+
+### Optimization Strategies
+1. **Caching**: Cache validation results for identical code strings
+2. **Parallel Validation**: Use process pools for batch validation during dataset generation
+3. **Progressive Validation**: Fail fast on syntax errors before expensive geometric validation
+4. **Resource Limits**: Enforce memory and time constraints for geometric validation
+
+### Scalability for 1M Dataset
+- Efficient validation for large-scale dataset generation
+- Batch processing capabilities
+- Progress tracking and resumable validation
+
+## Security Considerations
+
+### Code Execution Safety
+1. **Sandboxed Execution**: Run validation in isolated subprocess
+2. **Import Restrictions**: Prevent execution of dangerous imports
+3. **Resource Limits**: CPU time and memory constraints
+4. **File System Isolation**: Prevent file system access during validation
+
+## Dependencies and Requirements
+
+### Required Libraries
+- **ast**: Python syntax parsing and validation
+- **subprocess**: Safe code execution in isolation
+- **cadquery**: CadQuery API validation and execution
+- **pythonic-cadquery**: Additional CadQuery utilities
+- **logging**: Comprehensive error and debug logging
+- **time**: Timeout management for validation
+- **psutil**: Resource monitoring during validation
+
+### Configuration Dependencies
+- Validation timeout from config.yaml
+- Coordinate ranges and resolution constraints
+- CadQuery library import statement format
+- Error logging configuration
+
+## Quality Assurance
+
+### Test Coverage Requirements
+1. **Syntax Validation Tests**: Valid/invalid Python syntax cases
+2. **Semantic Validation Tests**: Valid/invalid CadQuery API usage
+3. **Geometric Validation Tests**: Valid/invalid geometric constructions
+4. **Integration Tests**: End-to-end validation pipeline
+5. **Performance Tests**: Validation timing and resource usage
+6. **Error Handling Tests**: Exception scenarios and recovery
+
+### Validation Accuracy
+- High precision in identifying truly invalid codes
+- Minimal false positives that reject valid constructions
+- Consistent validation results across different environments
+- Alignment with paper's validation criteria
+
+This comprehensive validation framework ensures that CAD-Recode generates only executable, geometrically valid CAD code that satisfies both the technical requirements of the CadQuery library and the geometric constraints necessary for meaningful CAD model reconstruction.

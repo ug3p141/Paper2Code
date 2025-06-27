@@ -1,0 +1,320 @@
+# Logic Analysis: experiments/run_experiments.py
+
+## Overview
+The `experiments/run_experiments.py` module serves as the central orchestrator for all experimental workflows in the CAD-Recode reproduction. This module implements the `ExperimentRunner` class that coordinates training, evaluation, ablation studies, and CAD-QA experiments based on the methodology described in the paper.
+
+## Core Responsibilities
+
+### 1. Experiment Orchestration
+- **Primary Function**: Coordinate all experimental workflows from the paper
+- **Scope**: Training experiments, evaluation on multiple datasets, ablation studies, and CAD-QA tasks
+- **Configuration Management**: Use config.yaml settings to ensure reproducible experiments
+- **Result Collection**: Aggregate and store results from all experimental components
+
+### 2. Workflow Management
+- **Sequential Execution**: Manage dependencies between experiments (training → evaluation → ablation)
+- **Resource Management**: Handle GPU memory, checkpoint loading/saving, and data pipeline coordination
+- **Error Handling**: Robust error handling for long-running experimental workflows
+- **Progress Tracking**: Comprehensive logging and progress monitoring across all experiments
+
+## Class Design: ExperimentRunner
+
+### Constructor Logic
+```python
+def __init__(self, config: Config):
+    """
+    Initialize ExperimentRunner with configuration.
+    
+    Logic Flow:
+    1. Store configuration reference for all experiments
+    2. Initialize logging and result storage directories
+    3. Set up device management (GPU/CPU) based on config.system.device
+    4. Initialize shared components that will be reused across experiments:
+       - Tokenizer for Qwen2-1.5B model
+       - Base model architecture (without loading weights initially)
+    5. Create result storage structure for different experiment types
+    6. Set random seeds for reproducibility across all experiments
+    """
+```
+
+### Core Experimental Methods
+
+#### 1. Training Experiment (`run_training_experiment`)
+**Purpose**: Execute the main training pipeline described in Section 4.3
+
+**Logic Flow**:
+1. **Dataset Preparation**:
+   - Initialize `DatasetGenerator` with `config.data.procedural_dataset`
+   - Generate 1M procedural CAD sequences if not already available
+   - Create training/validation splits from procedural data
+   - Initialize `DatasetLoader` with appropriate tokenizer
+
+2. **Model Initialization**:
+   - Create `CADRecodeModel` with `config.model` parameters
+   - Initialize point cloud projector with embedding_dim=1536, num_points=256
+   - Load pre-trained Qwen2-1.5B and prepare for fine-tuning
+
+3. **Training Setup**:
+   - Initialize `Trainer` with model, data loaders, and `config.training`
+   - Configure AdamW optimizer (lr=0.0002, weight_decay=0.01)
+   - Set up cosine learning rate scheduler with 1k warmup steps
+
+4. **Training Execution**:
+   - Execute training for 100k iterations with batch_size=18
+   - Monitor training progress and validation metrics
+   - Save checkpoints at regular intervals (config.logging.save_interval)
+   - Log training metrics to wandb if configured
+
+5. **Post-Training**:
+   - Save final model checkpoint
+   - Log training completion metrics
+   - Return training results and model path
+
+#### 2. Evaluation Experiment (`run_evaluation_experiment`)
+**Purpose**: Reproduce Table 1 and Table 2 results from the paper
+
+**Logic Flow**:
+1. **Model Loading**:
+   - Load trained CAD-Recode model from checkpoint
+   - Ensure model is in evaluation mode
+
+2. **Dataset Preparation**:
+   - Initialize test datasets: DeepCAD (8046), Fusion360 (1725), CC3D (2973)
+   - Create appropriate data loaders for each test dataset
+   - Handle different input formats (meshes vs point clouds for CC3D)
+
+3. **Evaluation Execution**:
+   - Initialize `Evaluator` with model and test data loaders
+   - For each dataset:
+     - Run evaluation with test-time sampling (10 candidates)
+     - Compute metrics: Chamfer Distance, IoU, Invalidity Ratio
+     - Collect qualitative results for visualization
+   - Aggregate results across all datasets
+
+4. **Result Processing**:
+   - Format results to match paper tables (Table 1, Table 2)
+   - Generate comparison with baseline methods
+   - Save quantitative results and qualitative examples
+   - Create visualizations for paper figures
+
+#### 3. Ablation Studies (`run_ablation_studies`)
+**Purpose**: Reproduce ablation results from Table 3 and Table 4
+
+**Logic Flow**:
+1. **Training Data Ablation** (Table 3):
+   - Compare DeepCAD dataset (160k) vs procedural dataset (160k, 1M)
+   - For each configuration:
+     - Train model with specific dataset
+     - Evaluate on all test datasets
+     - Record performance metrics
+   - Compare with/without test-time sampling
+
+2. **Architecture Ablation** (Table 4):
+   - Test different point cloud sizes: [64, 128, 256]
+   - Test different model sizes: [Qwen2-0.5B, Qwen2-1.5B]
+   - For each combination:
+     - Initialize model with specific configuration
+     - Train on 1M procedural dataset
+     - Evaluate performance
+   - Identify optimal configuration
+
+3. **Test-Time Sampling Ablation**:
+   - Compare single prediction vs 10-candidate sampling
+   - Analyze impact on Invalidity Ratio specifically
+   - Document computational overhead
+
+4. **Result Analysis**:
+   - Create comprehensive ablation tables
+   - Analyze trends and optimal configurations
+   - Generate insights about model design choices
+
+#### 4. CAD-QA Experiment (`run_cad_qa_experiment`)
+**Purpose**: Reproduce Table 5 results and demonstrate interpretability
+
+**Logic Flow**:
+1. **SGP-Bench Setup**:
+   - Load 1000 CAD-specific questions from SGP-Bench
+   - Convert questions from DeepCAD format to point cloud input format
+   - Prepare GPT-4o integration for answer generation
+
+2. **Baseline Comparisons**:
+   - **CAD-SIGNet Pipeline**:
+     - Generate CAD sequences using CAD-SIGNet
+     - Pass sequences + questions to GPT-4o with interpretation hints
+     - Record accuracy
+   - **PointLLM Pipeline**:
+     - Direct point cloud to answer generation
+     - Record accuracy for comparison
+
+3. **CAD-Recode Pipeline**:
+   - For each question:
+     - Generate CadQuery code from point cloud using CAD-Recode
+     - Pass code + question to GPT-4o (no interpretation hints needed)
+     - Collect and validate answers
+   - Calculate overall accuracy
+
+4. **Interpretability Analysis**:
+   - Demonstrate code interpretability with qualitative examples
+   - Show editing pipeline integration with GPT-4o
+   - Generate interactive editing examples (Figure 6 reproduction)
+
+#### 5. Editing Pipeline Demonstration (`run_editing_experiment`)
+**Purpose**: Demonstrate Figure 6 functionality
+
+**Logic Flow**:
+1. **Code Generation**:
+   - Select representative point clouds
+   - Generate CadQuery code using CAD-Recode
+
+2. **GPT-4o Integration**:
+   - Send code to GPT-4o with editing prompt
+   - Generate refactored code with parameters and sliders
+   - Validate executable code with ipywidgets
+
+3. **Interactive Interface**:
+   - Create Jupyter notebook examples
+   - Demonstrate parameter manipulation
+   - Show real-time CAD model updates
+
+### Utility Methods
+
+#### `setup_experiment_environment`
+**Purpose**: Prepare environment for specific experiment type
+
+**Logic**:
+1. Clear GPU memory if needed
+2. Set appropriate random seeds
+3. Configure logging for experiment type
+4. Create result directories
+5. Initialize monitoring tools (wandb, tensorboard)
+
+#### `save_experiment_results`
+**Purpose**: Standardize result saving across all experiments
+
+**Logic**:
+1. Create timestamped result directories
+2. Save quantitative metrics in structured format (JSON/CSV)
+3. Save model checkpoints with metadata
+4. Generate result summaries and comparisons
+5. Create visualization plots and tables
+
+#### `load_baseline_results`
+**Purpose**: Load baseline method results for comparison
+
+**Logic**:
+1. Load pre-computed baseline results from literature
+2. Format for consistent comparison with CAD-Recode results
+3. Handle missing baselines gracefully
+4. Ensure metric compatibility (same evaluation protocols)
+
+#### `generate_comparison_tables`
+**Purpose**: Create publication-ready result tables
+
+**Logic**:
+1. Format results to match paper table styles
+2. Include statistical significance testing where appropriate
+3. Generate LaTeX table code for publication
+4. Create both detailed and summary comparison views
+
+### Error Handling and Robustness
+
+#### Checkpoint Recovery
+- **Logic**: Detect incomplete experiments and resume from last valid checkpoint
+- **Implementation**: Save experiment state at key milestones
+- **Recovery**: Automatic restart capability for long-running experiments
+
+#### Resource Management
+- **GPU Memory**: Monitor and clear GPU memory between experiments
+- **Storage**: Manage large dataset generation and result storage
+- **Time Limits**: Handle experiment timeouts gracefully
+
+#### Validation Checks
+- **Data Integrity**: Validate dataset completeness before training
+- **Model Consistency**: Verify model architecture matches configuration
+- **Result Validation**: Check result ranges and detect anomalies
+
+### Integration with Configuration
+
+#### Configuration Mapping
+- **Training Config**: Map `config.training` to `Trainer` parameters
+- **Model Config**: Map `config.model` to `CADRecodeModel` initialization
+- **Evaluation Config**: Map `config.evaluation` to `Evaluator` settings
+- **Data Config**: Map `config.data` to dataset generation and loading
+
+#### Experiment Selection
+- **Command Line Interface**: Support selective experiment execution
+- **Configuration Flags**: Enable/disable specific experiment components
+- **Resource Allocation**: Adjust resource usage based on available hardware
+
+### Dependencies and Imports
+
+#### Core Dependencies
+```python
+# Core ML libraries
+import torch
+import torch.nn as nn
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# Experiment components
+from training.trainer import Trainer
+from evaluation.evaluator import Evaluator
+from data.dataset_generator import DatasetGenerator
+from data.dataset_loader import DatasetLoader
+from models.cad_recode_model import CADRecodeModel
+
+# Utilities
+from config import Config
+import logging
+import json
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import wandb
+```
+
+#### Experiment-Specific Imports
+```python
+# For CAD-QA experiments
+import openai  # GPT-4o integration
+from evaluation.cad_qa import SGPBenchEvaluator
+
+# For visualization and analysis
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# For result processing
+from collections import defaultdict
+import pickle
+```
+
+### Result Structure
+
+#### Experiment Results Format
+```python
+experiment_results = {
+    "training": {
+        "final_loss": float,
+        "training_time": float,
+        "model_path": str,
+        "training_metrics": Dict
+    },
+    "evaluation": {
+        "deepcad": {"mean_cd": float, "median_cd": float, "iou": float, "ir": float},
+        "fusion360": {"mean_cd": float, "median_cd": float, "iou": float, "ir": float},
+        "cc3d": {"mean_cd": float, "median_cd": float, "iou": float, "ir": float}
+    },
+    "ablation": {
+        "data_ablation": Dict,
+        "architecture_ablation": Dict,
+        "sampling_ablation": Dict
+    },
+    "cad_qa": {
+        "accuracy": float,
+        "baseline_comparisons": Dict,
+        "qualitative_examples": List
+    }
+}
+```
+
+This comprehensive logic analysis provides the foundation for implementing a robust experimental framework that faithfully reproduces all experiments described in the CAD-Recode paper while maintaining high code quality and reproducibility standards.

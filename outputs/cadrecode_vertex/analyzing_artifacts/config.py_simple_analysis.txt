@@ -1,0 +1,248 @@
+# Logic Analysis: config.py
+
+## Overview
+The `config.py` module serves as the central configuration management system for the CAD-Recode implementation. It must handle all hyperparameters, model settings, and experimental configurations as specified in the paper, ensuring reproducibility and easy parameter management across all experiments.
+
+## Core Requirements from Paper
+
+### 1. Critical Hyperparameters (Section 4.3 & Appendix A)
+- **Learning Rate**: 0.0002 (AdamW optimizer)
+- **Weight Decay**: 0.01 
+- **Batch Size**: 18 (single NVIDIA H100 GPU)
+- **Training Iterations**: 100,000 with 1,000 warmup steps
+- **Embedding Dimension**: 1,536 (d_q for query tokens)
+- **Number of Points**: 256 (n_p after furthest point sampling)
+- **Gaussian Noise**: σ=0.01, probability=0.5
+
+### 2. Model Architecture Parameters
+- **LLM Backbone**: Qwen2-1.5B from HuggingFace
+- **Point Cloud Projector**: Lightweight module with Fourier encoding
+- **Special Tokens**: `<s>` (start), `<e>` (end) for sequence boundaries
+- **Coordinate Range**: [-100, 100] with resolution 1 (quantization)
+
+### 3. Dataset Configuration
+- **Procedural Dataset**: 1 million CAD sequences
+- **Test Datasets**: DeepCAD (8,046), Fusion360 (1,725), CC3D (2,973)
+- **Primitives per Sketch**: 3-8 range (Algorithm 1)
+- **Evaluation Points**: 8,192 for Chamfer Distance computation
+
+## Class Design Logic
+
+### Config Class Structure
+```python
+class Config:
+    def __init__(self, config_dict=None):
+        # Initialize with default values from paper
+        # Override with provided config_dict if given
+        
+    @classmethod
+    def load_from_file(cls, config_path: str) -> 'Config':
+        # Load YAML configuration file
+        # Validate against paper specifications
+        # Return Config instance
+        
+    def validate_parameters(self) -> bool:
+        # Ensure all critical parameters match paper requirements
+        # Check parameter ranges and compatibility
+        # Validate model architecture constraints
+        
+    def get_model_config(self) -> dict:
+        # Return model-specific configuration
+        
+    def get_training_config(self) -> dict:
+        # Return training-specific configuration
+        
+    def get_data_config(self) -> dict:
+        # Return data-specific configuration
+        
+    def get_evaluation_config(self) -> dict:
+        # Return evaluation-specific configuration
+```
+
+## Implementation Logic
+
+### 1. YAML Configuration Loading
+- **File Parsing**: Use `yaml.safe_load()` to parse configuration file
+- **Error Handling**: Provide meaningful errors for malformed YAML
+- **Default Fallback**: Use paper-specified defaults when values missing
+- **Type Validation**: Ensure correct data types for all parameters
+
+### 2. Parameter Validation Logic
+- **Range Checking**: Validate learning rate, batch size, embedding dimensions
+- **Compatibility Checks**: Ensure model size matches hardware constraints
+- **Paper Compliance**: Verify all parameters match paper specifications
+- **Dependency Validation**: Check for parameter interdependencies
+
+### 3. Configuration Sections
+
+#### Model Configuration
+```python
+model_config = {
+    'llm_model_name': 'Qwen/Qwen2-1.5B',
+    'embedding_dim': 1536,
+    'num_points': 256,
+    'fourier_encoding': {'num_freqs': 64},
+    'start_token': '<s>',
+    'end_token': '<e>'
+}
+```
+
+#### Training Configuration
+```python
+training_config = {
+    'learning_rate': 0.0002,
+    'weight_decay': 0.01,
+    'batch_size': 18,
+    'num_iterations': 100000,
+    'warmup_steps': 1000,
+    'optimizer': 'AdamW',
+    'scheduler': 'cosine',
+    'noise_probability': 0.5,
+    'noise_std': 0.01
+}
+```
+
+#### Data Configuration
+```python
+data_config = {
+    'procedural_dataset': {
+        'size': 1000000,
+        'num_primitives_range': [3, 8],
+        'coordinate_range': [-100, 100],
+        'coordinate_resolution': 1
+    },
+    'datasets': {
+        'deepcad': {'test_size': 8046, 'train_size': 160000},
+        'fusion360': {'test_size': 1725},
+        'cc3d': {'test_size': 2973}
+    }
+}
+```
+
+#### Evaluation Configuration
+```python
+evaluation_config = {
+    'num_candidates': 10,
+    'metrics': {
+        'chamfer_distance': {
+            'num_points': 8192,
+            'scale_factor': 1000
+        },
+        'intersection_over_union': {'compute_from': 'meshes'},
+        'invalidity_ratio': {
+            'check_syntax': True,
+            'check_cad_semantics': True
+        }
+    }
+}
+```
+
+### 4. Validation Logic
+
+#### Critical Parameter Validation
+- **Learning Rate**: Must be 0.0002 for reproducibility
+- **Batch Size**: Must be 18 (paper-specified for H100 GPU)
+- **Embedding Dimension**: Must be 1536 (compatible with Qwen2-1.5B)
+- **Point Count**: Must be 256 (n_p from paper)
+
+#### Range Validation
+- **Coordinate Range**: [-100, 100] with resolution 1
+- **Primitives Range**: [3, 8] per sketch
+- **Noise Parameters**: σ=0.01, probability=0.5
+
+#### Model Compatibility
+- **LLM Model**: Verify Qwen2-1.5B availability
+- **Token Dimensions**: Ensure embedding_dim matches model
+- **Memory Requirements**: Validate batch_size × num_points × embedding_dim
+
+### 5. Error Handling Strategy
+
+#### Configuration Errors
+- **Missing Parameters**: Provide defaults from paper
+- **Invalid Types**: Convert with validation or raise TypeError
+- **Out-of-Range Values**: Warn and suggest paper values
+- **File Not Found**: Create default configuration file
+
+#### Validation Warnings
+- **Non-Standard Values**: Warn when deviating from paper
+- **Performance Impact**: Alert for memory/compute intensive settings
+- **Reproducibility**: Flag parameters that affect reproducibility
+
+### 6. Utility Methods
+
+#### Configuration Access
+```python
+def get_hyperparameter(self, section: str, param: str, default=None):
+    # Safe parameter access with defaults
+    
+def update_parameter(self, section: str, param: str, value):
+    # Update parameter with validation
+    
+def export_config(self, path: str):
+    # Export current configuration to YAML
+    
+def get_paper_defaults(self) -> dict:
+    # Return all paper-specified default values
+```
+
+#### Ablation Study Support
+```python
+def create_ablation_configs(self, ablation_params: dict) -> List['Config']:
+    # Generate configurations for ablation studies
+    # Support point_cloud_sizes: [64, 128, 256]
+    # Support model_sizes: [0.5B, 1.5B]
+    # Support dataset_sizes: [160k, 1M]
+```
+
+## Integration Considerations
+
+### 1. Module Independence
+- **No Dependencies**: config.py should not import other project modules
+- **Standard Library Only**: Use only Python standard library + PyYAML
+- **Self-Contained**: All validation logic internal to the module
+
+### 2. Reproducibility Features
+- **Seed Management**: Handle random seeds for reproducibility
+- **Version Tracking**: Track configuration versions
+- **Paper Compliance**: Flag deviations from paper specifications
+
+### 3. Extensibility
+- **Plugin Architecture**: Support for additional configuration sections
+- **Custom Validators**: Allow custom parameter validation functions
+- **Environment Variables**: Support environment variable overrides
+
+## Testing Strategy
+
+### 1. Parameter Validation Tests
+- Test all paper-specified parameters load correctly
+- Validate range checking for critical parameters
+- Test error handling for invalid configurations
+
+### 2. File I/O Tests
+- Test YAML loading with various file formats
+- Test configuration export functionality
+- Test error handling for malformed files
+
+### 3. Integration Tests
+- Test configuration usage across different modules
+- Validate parameter passing to model components
+- Test ablation study configuration generation
+
+## Critical Implementation Notes
+
+### 1. Paper Fidelity
+- All default values must exactly match paper specifications
+- Validation should enforce paper-compliant configurations
+- Deviations should be explicitly flagged with warnings
+
+### 2. Performance Considerations
+- Configuration loading should be fast (< 100ms)
+- Parameter validation should not impact training performance
+- Memory usage should be minimal
+
+### 3. User Experience
+- Clear error messages for configuration issues
+- Helpful suggestions for fixing invalid parameters
+- Documentation for all configuration options
+
+This logic analysis provides the foundation for implementing a robust, paper-compliant configuration management system that will ensure reproducibility and ease of use throughout the CAD-Recode implementation.

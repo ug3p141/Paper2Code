@@ -1,0 +1,158 @@
+# Logic Analysis: evaluation/metrics.py
+
+## Overview
+This module implements the three core evaluation metrics used in the CAD-Recode paper: Chamfer Distance (CD), Intersection over Union (IoU), and Invalidity Ratio (IR). It serves as the quantitative foundation for reproducing the paper's experimental results and comparing against baseline methods.
+
+## Core Responsibilities
+
+### 1. Chamfer Distance Computation
+**Purpose**: Measure geometric accuracy between predicted and ground truth CAD models
+**Paper Specification**: 
+- Computed using 8,192 points (from config: `evaluation.metrics.chamfer_distance.num_points`)
+- Results multiplied by 10³ for reporting (from config: `evaluation.metrics.chamfer_distance.scale_factor`)
+- Both mean and median values reported
+
+**Logic Flow**:
+1. Execute generated CAD code to obtain 3D model
+2. Convert CAD model to mesh representation
+3. Sample 8,192 points uniformly from mesh surface
+4. Compute bidirectional Chamfer Distance between point sets
+5. Apply scaling factor (×1000) as per paper convention
+
+**Technical Considerations**:
+- Handle invalid CAD code execution gracefully
+- Ensure consistent point sampling methodology
+- Use efficient CD computation (potentially GPU-accelerated)
+
+### 2. Intersection over Union (IoU) Computation
+**Purpose**: Measure volumetric overlap between predicted and ground truth CAD models
+**Paper Specification**:
+- Computed from resulting CAD model meshes (from config: `evaluation.metrics.intersection_over_union.compute_from`)
+- Expressed as percentage
+- Requires mesh-based volumetric calculations
+
+**Logic Flow**:
+1. Execute CAD code to generate 3D model
+2. Convert to watertight mesh representation
+3. Compute volumetric intersection using mesh boolean operations
+4. Calculate union volume
+5. Compute IoU = (intersection_volume / union_volume) × 100
+
+**Technical Considerations**:
+- Ensure meshes are watertight for accurate volume computation
+- Handle mesh boolean operation failures
+- Consider mesh resolution consistency between predictions and ground truth
+
+### 3. Invalidity Ratio (IR) Computation
+**Purpose**: Measure percentage of generated CAD sequences that fail to produce valid models
+**Paper Specification**:
+- Validates both syntax (φ_syn) and CAD semantics (φ_cad) from Section 4.1
+- Reported as percentage of invalid sequences
+
+**Logic Flow**:
+1. For each generated CAD code:
+   - Check Python syntax validity (φ_syn)
+   - Check CadQuery library compatibility (φ_cad)
+   - Attempt code execution and geometry validation
+2. Count invalid codes
+3. Compute ratio: (invalid_count / total_count) × 100
+
+**Technical Considerations**:
+- Integrate with `utils/cad_validation.py` for validation logic
+- Handle execution timeouts (config: `cadquery.validation_timeout`)
+- Distinguish between different types of failures
+
+## Class Design and Methods
+
+### Metrics Class Structure
+```python
+class Metrics:
+    def __init__(self, config: dict)
+    def compute_chamfer_distance(self, pred_pc: np.ndarray, gt_pc: np.ndarray) -> float
+    def compute_iou(self, pred_mesh: trimesh.Trimesh, gt_mesh: trimesh.Trimesh) -> float
+    def compute_invalidity_ratio(self, codes: List[str]) -> float
+    def execute_cad_code(self, code: str) -> Optional[Any]
+    def cad_to_point_cloud(self, cad_model: Any, num_points: int) -> np.ndarray
+    def cad_to_mesh(self, cad_model: Any) -> trimesh.Trimesh
+    def _compute_mesh_volume(self, mesh: trimesh.Trimesh) -> float
+    def _compute_mesh_intersection(self, mesh1: trimesh.Trimesh, mesh2: trimesh.Trimesh) -> float
+```
+
+## Integration with Configuration
+
+### Key Configuration Parameters
+- `evaluation.metrics.chamfer_distance.num_points`: 8192 points for CD computation
+- `evaluation.metrics.chamfer_distance.scale_factor`: 1000 for result scaling
+- `cadquery.validation_timeout`: 30 seconds for code execution timeout
+- `evaluation.metrics.intersection_over_union.compute_from`: "meshes" for IoU computation
+
+### Error Handling Strategy
+1. **CAD Code Execution Failures**: Return None for invalid executions, count towards IR
+2. **Mesh Generation Failures**: Handle non-manifold or degenerate geometries
+3. **Point Sampling Failures**: Fallback to alternative sampling methods
+4. **Timeout Handling**: Respect validation timeout for code execution
+
+## Dependencies and Integration Points
+
+### External Dependencies
+- `torch`: For tensor operations and potential GPU acceleration
+- `numpy`: For numerical computations and array operations
+- `trimesh`: For mesh processing and boolean operations
+- `open3d`: For point cloud operations and visualization
+- `cadquery`: For CAD code execution and model generation
+
+### Internal Dependencies
+- `utils/cad_validation.py`: For CAD code validation logic (φ_syn and φ_cad)
+- Configuration system: For metric computation parameters
+
+## Performance Considerations
+
+### Computational Efficiency
+1. **Batch Processing**: Process multiple evaluations simultaneously where possible
+2. **Caching**: Cache mesh conversions and point cloud generations
+3. **GPU Acceleration**: Use GPU for Chamfer Distance computation when available
+4. **Memory Management**: Handle large point clouds and meshes efficiently
+
+### Scalability
+- Support evaluation on large test sets (8,046 DeepCAD, 2,973 CC3D models)
+- Parallel processing for independent metric computations
+- Progress tracking for long-running evaluations
+
+## Validation and Quality Assurance
+
+### Metric Validation
+1. **Reference Implementation**: Ensure CD computation matches literature standards
+2. **Numerical Stability**: Handle edge cases (empty point clouds, degenerate meshes)
+3. **Consistency Checks**: Verify metric ranges and expected values
+
+### Reproducibility
+- Deterministic point sampling using fixed random seeds
+- Consistent mesh processing parameters
+- Standardized coordinate systems and scaling
+
+## Error Cases and Robustness
+
+### Common Failure Modes
+1. **Invalid CAD Code**: Syntax errors, unsupported operations
+2. **Geometric Failures**: Self-intersecting meshes, non-manifold geometry
+3. **Execution Timeouts**: Complex CAD operations exceeding time limits
+4. **Memory Issues**: Large models exceeding available memory
+
+### Recovery Strategies
+- Graceful degradation for partial metric computation
+- Detailed error logging for debugging
+- Fallback methods for edge cases
+
+## Testing and Validation Strategy
+
+### Unit Tests
+- Individual metric computation correctness
+- Edge case handling (empty inputs, invalid geometries)
+- Configuration parameter validation
+
+### Integration Tests
+- End-to-end evaluation pipeline
+- Compatibility with different CAD code formats
+- Performance benchmarking
+
+This analysis provides the foundation for implementing a robust, accurate, and efficient metrics evaluation system that faithfully reproduces the quantitative results reported in the CAD-Recode paper while handling the practical challenges of CAD code execution and geometric processing.
