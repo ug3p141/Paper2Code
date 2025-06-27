@@ -1,0 +1,106 @@
+# CAD-Recode Configuration
+# Based on paper: "CAD-Recode: Reverse Engineering CAD Code from Point Clouds"
+
+model:
+  # LLM Configuration
+  llm_model_name: "Qwen/Qwen2-1.5B"  # Pre-trained LLM as specified in paper
+  embedding_dim: 1536  # Query token embedding dimension (d_q)
+  
+  # Point Cloud Projector Configuration
+  num_points: 256  # Number of points after furthest point sampling (n_p)
+  fourier_encoding:
+    num_freqs: 64  # Number of frequencies for Fourier positional encoding
+  
+  # Special tokens
+  start_token: "<s>"
+  end_token: "<e>"
+
+training:
+  # Training hyperparameters from paper Section 4.3 and Appendix A
+  learning_rate: 0.0002  # AdamW learning rate
+  weight_decay: 0.01  # AdamW weight decay
+  batch_size: 18  # Batch size for single H100 GPU
+  num_iterations: 100000  # Total training iterations (100k)
+  warmup_steps: 1000  # Initial warmup period (1k iterations)
+  
+  # Optimizer settings
+  optimizer: "AdamW"
+  scheduler: "cosine"  # Cosine learning rate scheduler
+  
+  # Data augmentation
+  noise_probability: 0.5  # Probability of adding Gaussian noise
+  noise_std: 0.01  # Standard deviation of Gaussian noise (mean=0, std=0.01)
+  
+  # Training strategy
+  training_mode: "end_to_end"  # Point cloud projector from scratch, LLM fine-tuned
+  loss_function: "nll"  # Negative Log-Likelihood loss
+
+data:
+  # Dataset configuration
+  procedural_dataset:
+    size: 1000000  # 1 million procedurally generated CAD sequences
+    num_primitives_range: [3, 8]  # Number of primitives per sketch (Algorithm 1)
+    coordinate_range: [-100, 100]  # Parameter quantization range
+    coordinate_resolution: 1  # Minimum resolution for coordinates
+    
+  # Test datasets
+  datasets:
+    deepcad:
+      test_size: 8046  # Test set size
+      train_size: 160000  # Training set size when using DeepCAD data
+    fusion360:
+      test_size: 1725  # Test set size
+    cc3d:
+      test_size: 2973  # Real-world test set size
+  
+  # Point cloud processing
+  point_cloud:
+    num_sample_points: 8192  # Points for Chamfer Distance computation
+    normalization: "unit_box"  # Normalize to unit bounding box
+
+evaluation:
+  # Test-time sampling strategy from Section 4.3
+  num_candidates: 10  # Generate 10 different CAD code candidates
+  sampling_strategy: "different_point_cloud_sampling"
+  
+  # Metrics from paper Section 5.1
+  metrics:
+    chamfer_distance:
+      num_points: 8192  # Points for CD computation
+      scale_factor: 1000  # Multiply CD values by 10^3 as reported
+    intersection_over_union:
+      compute_from: "meshes"  # Compute IoU from resulting CAD model meshes
+    invalidity_ratio:
+      check_syntax: true  # φ_syn validation
+      check_cad_semantics: true  # φ_cad validation
+
+# Hardware and system configuration
+system:
+  device: "cuda"  # GPU training
+  mixed_precision: false  # Not specified in paper
+  num_workers: 4  # DataLoader workers
+  pin_memory: true
+
+# Logging and checkpointing
+logging:
+  log_interval: 100  # Log every 100 iterations
+  save_interval: 5000  # Save checkpoint every 5000 iterations
+  wandb_project: "cad-recode"
+  
+# Paths
+paths:
+  data_dir: "./data"
+  checkpoints_dir: "./checkpoints"
+  results_dir: "./results"
+  logs_dir: "./logs"
+
+# CadQuery specific settings
+cadquery:
+  library_import: "import cadquery as cq"
+  validation_timeout: 30  # Timeout for code execution validation (seconds)
+  
+# Ablation study configurations
+ablation:
+  point_cloud_sizes: [64, 128, 256]  # From Table 4 in paper
+  model_sizes: ["Qwen/Qwen2-0.5B", "Qwen/Qwen2-1.5B"]  # From ablation study
+  dataset_sizes: [160000, 1000000]  # DeepCAD size vs full procedural dataset

@@ -3,7 +3,7 @@ import os
 from tqdm import tqdm
 import sys
 from utils import extract_planning, content_to_json, print_response, load_accumulated_cost, save_accumulated_cost
-from vertex_utils import (initialize_vertex_ai, get_vertex_model, vertex_api_call, 
+from vertex_utils import (initialize_vertex_ai, get_claude_model_names, vertex_claude_api_call, 
                          print_log_cost_vertex)
 import copy
 import argparse
@@ -11,7 +11,7 @@ import argparse
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--paper_name', type=str)
-parser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet-v2@20241022")
+parser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet")
 parser.add_argument('--paper_format', type=str, default="JSON", choices=["JSON", "LaTeX"])
 parser.add_argument('--pdf_json_path', type=str)  # json format
 parser.add_argument('--pdf_latex_path', type=str)  # latex format
@@ -24,8 +24,7 @@ parser.add_argument('--location', type=str, default="us-central1")
 args = parser.parse_args()
 
 # Initialize Vertex AI
-project_id, location = initialize_vertex_ai(args.project_id, args.location)
-model = get_vertex_model(args.vertex_model)
+project_id, location, credentials = initialize_vertex_ai(args.project_id, args.location)
 
 paper_name = args.paper_name
 vertex_model = args.vertex_model
@@ -35,6 +34,15 @@ pdf_latex_path = args.pdf_latex_path
 output_dir = args.output_dir
 max_retries = args.max_retries
 base_delay = args.base_delay
+
+# Validate model name
+available_model_names = get_claude_model_names()
+if vertex_model not in available_model_names and vertex_model not in available_model_names.values():
+    print(f"❌ Error: Model '{vertex_model}' not found.")
+    print("Available models:")
+    for short_name, full_name in available_model_names.items():
+        print(f"  - {short_name} ({full_name})")
+    sys.exit(1)
 
 if paper_format == "JSON":
     with open(f'{pdf_json_path}') as f:
@@ -158,8 +166,9 @@ for todo_file_name in tqdm(todo_file_lst):
     instruction_msg = get_write_msg(todo_file_name, logic_analysis_dict[todo_file_name])
     trajectories.extend(instruction_msg)
 
-    completion = vertex_api_call(model, trajectories, max_output_tokens=4096, 
-                                max_retries=max_retries, base_delay=base_delay)
+    completion = vertex_claude_api_call(project_id, location, credentials, vertex_model, 
+                                        trajectories, max_tokens=4096, 
+                                        max_retries=max_retries, base_delay=base_delay)
 
     responses.append(completion)
 
@@ -173,17 +182,27 @@ for todo_file_name in tqdm(todo_file_lst):
     total_accumulated_cost = temp_total_accumulated_cost
 
     # save
-    with open(f'{artifact_output_dir}/{todo_file_name}_simple_analysis.txt', 'w') as f:
+    # Create subdirectories for artifacts if needed
+    artifact_file_path = f'{artifact_output_dir}/{todo_file_name}_simple_analysis.txt'
+    artifact_dir = os.path.dirname(artifact_file_path)
+    if artifact_dir:
+        os.makedirs(artifact_dir, exist_ok=True)
+    
+    with open(artifact_file_path, 'w') as f:
         f.write(completion['choices'][0]['message']['content'])
 
     done_file_lst.append(todo_file_name)
 
-    # save for next stage(coding)
-    todo_file_name = todo_file_name.replace("/", "_")
-    with open(f'{output_dir}/{todo_file_name}_simple_analysis_response.json', 'w') as f:
+    # save for next stage(coding) - handle subdirectories
+    save_todo_file_name = todo_file_name.replace("/", "_")
+    
+    response_file_path = f'{output_dir}/{save_todo_file_name}_simple_analysis_response.json'
+    trajectories_file_path = f'{output_dir}/{save_todo_file_name}_simple_analysis_trajectories.json'
+    
+    with open(response_file_path, 'w') as f:
         json.dump(responses, f)
 
-    with open(f'{output_dir}/{todo_file_name}_simple_analysis_trajectories.json', 'w') as f:
+    with open(trajectories_file_path, 'w') as f:
         json.dump(trajectories, f)
 
 save_accumulated_cost(f"{output_dir}/accumulated_cost.json", total_accumulated_cost)

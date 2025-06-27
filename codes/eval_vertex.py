@@ -4,7 +4,7 @@ import sys
 import argparse
 from utils import read_python_files, extract_planning, content_to_json, \
         read_all_files, extract_json_from_string, get_now_str
-from vertex_utils import (initialize_vertex_ai, get_vertex_model, vertex_api_call, 
+from vertex_utils import (initialize_vertex_ai, get_claude_model_names, vertex_claude_api_call, 
                          print_log_cost_vertex)
 
 def main(args):
@@ -24,8 +24,7 @@ def main(args):
     gold_repo_dir = args.gold_repo_dir
 
     # Initialize Vertex AI
-    project_id, location = initialize_vertex_ai(args.project_id, args.location)
-    model = get_vertex_model(vertex_model)
+    project_id, location, credentials = initialize_vertex_ai(args.project_id, args.location)
 
     # paper
     with open(f'{pdf_json_path}') as f:
@@ -104,8 +103,9 @@ def main(args):
     for i in range(generated_n):
         print(f"Generating evaluation {i+1}/{generated_n}...")
         
-        completion = vertex_api_call(model, msg, max_output_tokens=4096, 
-                                    max_retries=max_retries, base_delay=base_delay)
+        completion = vertex_claude_api_call(project_id, location, credentials, vertex_model, 
+                                            msg, max_tokens=4096, 
+                                            max_retries=max_retries, base_delay=base_delay)
         
         # Calculate cost for this call
         temp_total_accumulated_cost = print_log_cost_vertex(completion, vertex_model, 
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     argparser.add_argument('--eval_type', type=str, default="ref_free", choices=["ref_free", "ref_based"])
 
     argparser.add_argument('--generated_n', type=int, default=8)
-    argparser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet-v2@20241022")
+    argparser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet")
     
     argparser.add_argument('--max_retries', type=int, default=5)
     argparser.add_argument('--base_delay', type=int, default=60)

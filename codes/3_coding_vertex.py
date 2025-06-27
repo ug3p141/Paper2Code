@@ -4,14 +4,14 @@ from tqdm import tqdm
 import sys
 import copy
 from utils import extract_planning, content_to_json, extract_code_from_content, print_response, load_accumulated_cost, save_accumulated_cost
-from vertex_utils import (initialize_vertex_ai, get_vertex_model, vertex_api_call, 
+from vertex_utils import (initialize_vertex_ai, get_claude_model_names, vertex_claude_api_call, 
                          print_log_cost_vertex)
 import argparse
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--paper_name', type=str)
-parser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet-v2@20241022")
+parser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet")
 parser.add_argument('--paper_format', type=str, default="JSON", choices=["JSON", "LaTeX"])
 parser.add_argument('--pdf_json_path', type=str)  # json format
 parser.add_argument('--pdf_latex_path', type=str)  # latex format
@@ -25,8 +25,7 @@ parser.add_argument('--location', type=str, default="us-central1")
 args = parser.parse_args()
 
 # Initialize Vertex AI
-project_id, location = initialize_vertex_ai(args.project_id, args.location)
-model = get_vertex_model(args.vertex_model)
+project_id, location, credentials = initialize_vertex_ai(args.project_id, args.location)
 
 paper_name = args.paper_name
 vertex_model = args.vertex_model
@@ -37,6 +36,15 @@ output_dir = args.output_dir
 output_repo_dir = args.output_repo_dir
 max_retries = args.max_retries
 base_delay = args.base_delay
+
+# Validate model name
+available_model_names = get_claude_model_names()
+if vertex_model not in available_model_names and vertex_model not in available_model_names.values():
+    print(f"❌ Error: Model '{vertex_model}' not found.")
+    print("Available models:")
+    for short_name, full_name in available_model_names.items():
+        print(f"  - {short_name} ({full_name})")
+    sys.exit(1)
 
 if paper_format == "JSON":
     with open(f'{pdf_json_path}') as f:
@@ -169,8 +177,9 @@ for todo_idx, todo_file_name in enumerate(tqdm(todo_file_lst)):
     instruction_msg = get_write_msg(todo_file_name, detailed_logic_analysis_dict[todo_file_name], done_file_lst)
     trajectories.extend(instruction_msg)
 
-    completion = vertex_api_call(model, trajectories, max_output_tokens=4096, 
-                                max_retries=max_retries, base_delay=base_delay)
+    completion = vertex_claude_api_call(project_id, location, credentials, vertex_model, 
+                                        trajectories, max_tokens=4096, 
+                                        max_retries=max_retries, base_delay=base_delay)
 
     responses.append(completion)
 
@@ -180,7 +189,7 @@ for todo_idx, todo_file_name in enumerate(tqdm(todo_file_lst)):
 
     done_file_lst.append(todo_file_name)
 
-    # save
+    # Create output directories
     os.makedirs(f'{output_repo_dir}', exist_ok=True)
     save_todo_file_name = todo_file_name.replace("/", "_")
 
@@ -189,8 +198,13 @@ for todo_idx, todo_file_name in enumerate(tqdm(todo_file_lst)):
     temp_total_accumulated_cost = print_log_cost_vertex(completion, vertex_model, current_stage, output_dir, total_accumulated_cost)
     total_accumulated_cost = temp_total_accumulated_cost
 
-    # save artifacts
-    with open(f'{artifact_output_dir}/{save_todo_file_name}_coding.txt', 'w') as f:
+    # save artifacts - handle subdirectories for artifacts
+    artifact_file_path = f'{artifact_output_dir}/{save_todo_file_name}_coding.txt'
+    artifact_dir = os.path.dirname(artifact_file_path)
+    if artifact_dir:
+        os.makedirs(artifact_dir, exist_ok=True)
+    
+    with open(artifact_file_path, 'w') as f:
         f.write(completion['choices'][0]['message']['content'])
 
     # extract code save
@@ -199,11 +213,17 @@ for todo_idx, todo_file_name in enumerate(tqdm(todo_file_lst)):
         code = message['content']
 
     done_file_dict[todo_file_name] = code
-    if save_todo_file_name != todo_file_name:
-        todo_file_dir = '/'.join(todo_file_name.split("/")[:-1])
-        os.makedirs(f"{output_repo_dir}/{todo_file_dir}", exist_ok=True)
+    
+    # Create subdirectories for the actual code files if needed
+    full_file_path = f"{output_repo_dir}/{todo_file_name}"
+    file_dir = os.path.dirname(full_file_path)
+    if file_dir and file_dir != output_repo_dir:  # Only create if there's a subdirectory
+        os.makedirs(file_dir, exist_ok=True)
+        print(f"📁 Created directory: {file_dir}")
 
-    with open(f"{output_repo_dir}/{todo_file_name}", 'w') as f:
+    with open(full_file_path, 'w') as f:
         f.write(code)
+    
+    print(f"💾 Saved file: {full_file_path}")
 
 save_accumulated_cost(f"{output_dir}/accumulated_cost.json", total_accumulated_cost)

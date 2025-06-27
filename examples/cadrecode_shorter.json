@@ -1,0 +1,88 @@
+{
+    "paper_id": "cadrecode",
+    "title": "CAD-Recode: Reverse Engineering CAD Code from Point Clouds",
+    "authors": [
+        {
+            "first": "Danila",
+            "last": "Rukhovich",
+            "affiliation": "University of Luxembourg"
+        },
+        {
+            "first": "Elona",
+            "last": "Dupont",
+            "affiliation": "University of Luxembourg"
+        },
+        {
+            "first": "Dimitrios",
+            "last": "Mallis",
+            "affiliation": "University of Luxembourg"
+        },
+        {
+            "first": "Kseniya",
+            "last": "Cherenkova",
+            "affiliation": "University of Luxembourg"
+        },
+        {
+            "first": "Anis",
+            "last": "Kacem",
+            "affiliation": "University of Luxembourg"
+        },
+        {
+            "first": "Djamila",
+            "last": "Aouada",
+            "affiliation": "University of Luxembourg"
+        }
+    ],
+    "abstract": "Computer-Aided Design (CAD) models are typically constructed by sequentially drawing parametric sketches and applying CAD operations to obtain a 3D model. The problem of 3D CAD reverse engineering consists of reconstructing the sketch and CAD operation sequences from 3D representations such as point clouds. In this paper, we address this challenge through novel contributions across three levels: CAD sequence representation, network design, and training dataset. We represent CAD sketch-extrude sequences as Python code using CadQuery. The proposed CAD-Recode translates a point cloud into Python code that, when executed, reconstructs the CAD model. Taking advantage of pre-trained Large Language Models (LLMs) exposure to Python code, we leverage a relatively small LLM as a decoder for CAD-Recode and combine it with a lightweight point cloud projector. CAD-Recode is trained on a procedurally generated dataset of one million CAD sequences. CAD-Recode significantly outperforms existing methods across the DeepCAD, Fusion360 and real-world CC3D datasets.",
+    "main_sections": [
+        {
+            "title": "Introduction",
+            "content": "CAD modeling is the standard approach for designing manufactured objects, ranging from furniture to mechanical components. Creating a 3D CAD model is a time-consuming task that demands specialized expertise. To streamline this process, 3D CAD reverse engineering aims at generating CAD models directly from 3D scanned objects.\n\nDespite recent advances in feature-based CAD reverse engineering, key limitations constrain the broader applicability of existing approaches. Firstly, existing methods often use customized CAD representations that are difficult to interpret, require post-processing to be compatible with CAD tools, and restrict design capabilities to basic operations. Secondly, these approaches typically rely on designing networks that output language-like CAD representations and training them from scratch.\n\nWe pose the question: In view of the recent breakthrough performance of Large Language Models (LLMs), how can their advanced language understanding be leveraged for CAD reverse engineering?\n\nTo address this question, we base our approach on three key observations: (1) LLMs can generate valid Python code, (2) modern CAD software increasingly supports modeling through Python scripting, and (3) recent efforts have shown that LLMs can be fine-tuned to process point clouds.\n\nWe propose CAD-Recode, a solution for CAD reverse engineering by fine-tuning an LLM to map input point clouds into CAD sketch-extrude sequences represented as Python code using the CadQuery library. This code-based representation is not only interpretable but also inherently allows for incorporating modular CAD features and design practices.\n\nTo train CAD-Recode, we propose a procedurally generated training dataset composed of one million CAD sketch-extrude sequences as Python CadQuery code. This dataset provides full control over design features, patterns and dataset size included during training."
+        },
+        {
+            "title": "Related Works",
+            "content": "Recent works have explored integrating point clouds with LLMs for various tasks, including 3D generation, captioning, and question answering. These approaches typically employ complex point cloud encoders.\n\nIn parallel, recent works have started exploring LLMs' capabilities in CAD-related tasks. While some work attempts CAD reverse engineering from images using GPT-4V, it still requires a separate transformer for parameter inference. In contrast, CAD-Recode introduces the first approach for point cloud to CAD reconstruction combining point clouds with the sequence modeling capabilities of pre-trained LLMs.\n\nCAD reverse engineering aims to reconstruct parametric CAD models from 3D shapes (e.g., meshes or point clouds) in a compatible representation with CAD software. Recent works have adopted the more CAD-aligned sketch-extrude representation. Considering the sequential nature of sketch-extrude operations, methods have explored transformer architectures for both autoregressive and non-autoregressive prediction of sketch-extrude sequences from point clouds."
+        },
+        {
+            "title": "CAD Representation and Training Dataset",
+            "content": "Modern feature-based CAD modeling relies on sequences of 2D sketches and operations to create 3D models. We focus on sketch-extrusion sequences, a fundamental CAD modeling pattern.\n\nRecent approaches in CAD language modeling encode sketch-extrude sequences as numerical vectors representing features and their parameters. However, this representation constrains the modeling to specific CAD practices, lacks interpretability, and requires post-processing for CAD kernel compatibility.\n\nWe propose using CadQuery Python code to represent sketch-extrude sequences for CAD reverse engineering, offering the following advantages:\n\n1. Modularity of CAD Features: CadQuery provides comprehensive built-in CAD functionality, encompassing both low-level features and higher-level geometries like cylinders and boxes. Its programmatic nature enables variable reuse and code modularity.\n\n2. Interpretability and LLM Compatibility: The proposed representation, based on Python and CadQuery syntax, presents an alternative to abstract numerical encodings with improved interpretability. This representation aligns with pretrained LLMs' demonstrated proficiency in Python code generation.\n\nWe propose to procedurally generate a training dataset of one million CAD models in the form of sketch-extrude sequences written in Python CadQuery code. Our proposed pipeline randomly generates sketch and CAD operation parameters guided by topological and geometrical heuristics to ensure control over the amount of generated models and the features in the generated codes."
+        },
+        {
+            "title": "CAD-Recode Method",
+            "content": "Let P = {p_i}^n_{i=1} ∈ R^{n×3} denote an input point cloud. The objective of CAD-Recode is to learn a mapping Ψ : R^{n×3} → C that maps the input point cloud to a valid CAD code C such that the code, when executed, produces a CAD model geometrically approximating the input point cloud.\n\nCAD-Recode builds on pre-trained LLMs and their prior exposure to Python code, augmenting these with point cloud processing capabilities. Its architecture consists of two components:\n\n1. Point Cloud Projector: A lightweight projection module that directly maps a dense point cloud into a sequence of query tokens. The point cloud projector consists of three simple components: (a) furthest point sampling to downsample the input point clouds, (b) Fourier positional encoding of coordinates, and (c) a linear layer projecting the encoded coordinates into query tokens.\n\n2. LLM as CAD Code Decoder: Our CAD code decoder adapts a pre-trained LLM for the specific task of CAD code generation. We leverage the Qwen2-1.5B model as our LLM backbone. The decoder generates the CAD code sequence through next-token prediction.\n\nTraining Strategy: The model operates on query tokens and processes input point clouds downsampled to 256 points. The network is trained on the procedurally generated CAD codes. The training objective minimizes the Negative Log-Likelihood of the target CAD code sequence.\n\nInference Strategy: At inference time, the point cloud projector processes the input point cloud to generate query tokens, which are then fed to the decoder. The model autoregressively generates CAD code tokens until producing a complete code sequence."
+        },
+        {
+            "title": "Experiments",
+            "content": "We validate the effectiveness of CAD-Recode across two scenarios: reverse engineering and interpretability/editability of generated CAD code.\n\nExperimental Setup: CAD-Recode is evaluated on three test datasets: DeepCAD (8046 models), Fusion360 (1725 models), and the real-world CC3D (2973 models). We use three metrics: Chamfer Distance (CD), Intersection over Union (IoU), and Invalidity Ratio (IR).\n\nResults: CAD-Recode establishes new state-of-the-art performance across all metrics. When trained on 1M generated samples, CAD-Recode demonstrates a ten-fold improvement in mean CD and an increase of IoU by over 10% on both DeepCAD and Fusion360 datasets compared to existing best methods. On the real-world CC3D dataset, our method achieves significant improvements over CAD-SIGNet, with a 89% lower median CD and a 30% higher IoU.\n\nAblation Study: Training CAD-Recode on procedurally generated samples leads to significant improvements in geometric fidelity compared to training on existing datasets. Scaling the training dataset to 1M samples provides further improvements across all datasets.\n\nCAD-QA and Interpretability: We extend the SGP-Bench benchmark to evaluate CAD reverse engineering methods by using point clouds as input. Our approach achieves 76.5% accuracy on this CAD-QA task. When using CAD-SIGNet's output with GPT-4o, the accuracy reaches only 63.2%.\n\nEditing Pipeline: Leveraging the interpretable nature of our code-based output, we present an automated editing pipeline using GPT-4o. Through a simple prompt, the system refactors the generated code to expose geometric parameters via interactive sliders, enabling direct manipulation of the reconstructed model."
+        },
+        {
+            "title": "Conclusion",
+            "content": "This work rethinks the problem of feature-based CAD reverse engineering by approaching it through pre-trained LLMs taking advantage of CAD Python-based representation. Our key contributions include a new CAD code representation for reverse engineering sketch-extrude sequences, very large-scale procedurally generated training dataset in the form of CAD programs, and a point cloud-to-CAD code model. We demonstrate that CAD-Recode outperforms existing methods by a large margin on three datasets. We also showcase that combining pre-trained LLMs with geometric understanding enables powerful new workflows, where designers can reconstruct CAD models from point clouds and modify them through natural language."
+        }
+    ],
+    "key_contributions": [
+        "A CAD sketch-extrude sequence representation in Python code using CadQuery for CAD reverse engineering",
+        "CAD-Recode, the first LLM-based CAD reverse engineering model designed to predict CAD Python code from point clouds",
+        "A one million procedurally generated training dataset of CAD sketch-extrude sequences as CadQuery Python code",
+        "Extensive experiments showing substantial improvements over state-of-the-art methods",
+        "Integration with off-the-shelf LLMs for CAD Question Answering and CAD editing from point clouds"
+    ],
+    "technical_details": {
+        "architecture": {
+            "point_cloud_projector": "Lightweight module with furthest point sampling, Fourier positional encoding, and linear projection",
+            "llm_decoder": "Qwen2-1.5B model fine-tuned for CAD code generation",
+            "input_processing": "Point clouds downsampled to 256 points",
+            "output": "Executable Python CadQuery code"
+        },
+        "training": {
+            "dataset_size": "1 million procedurally generated CAD sequences",
+            "objective": "Negative Log-Likelihood of target CAD code sequence",
+            "training_time": "Approximately 12 hours on single NVIDIA H100 GPU"
+        },
+        "evaluation": {
+            "datasets": ["DeepCAD", "Fusion360", "CC3D"],
+            "metrics": ["Chamfer Distance", "Intersection over Union", "Invalidity Ratio"],
+            "performance": "10x improvement in mean CD, >10% increase in IoU vs existing methods"
+        }
+    }
+}

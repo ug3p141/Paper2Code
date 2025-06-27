@@ -1,0 +1,60 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}"
+        },
+        {
+            "name": "Python Debugger Paper2Code 1.1_extract: For analyzing the script 1.1_extract_config.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${fileDirname}",
+            "console": "integratedTerminal",
+            "args": [
+                "--paper_name", "CADRecode",
+                "--output_dir", "../outputs/cadrecode_vertex",
+            ]
+        },
+        {
+            "name": "Python Debugger Paper2Code 1_planning: For analyzing the script 1_planning_vertex.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${fileDirname}""console": "integratedTerminal",
+            "args": [
+                "--paper_name",   "CADRecode",
+                "--vertex_model", "claude-sonnet-4",
+                "--pdf_json_path","../examples/cadrecode_cleaned.json",
+                "--output_dir",   "../outputs/cadrecode_vertex",
+                "--project_id",   "contact-internal-llm",
+                "--location",     "europe-west1",
+                "--max_retries",  "5",
+                "--base_delay",   "60"
+            ]
+        }
+        {
+            "name": "Python Debugger Paper2Code 2_analyzing: For analyzing the script 2_analyzing_vertex.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${fileDirname}""console": "integratedTerminal",
+            "args": [
+                "--paper_name",   "CADRecode",
+                "--vertex_model", "claude-sonnet-4",
+                "--pdf_json_path","../examples/cadrecode_cleaned.json",
+                "--output_dir",   "../outputs/cadrecode_vertex",
+                "--project_id",   "contact-internal-llm",
+                "--location",     "europe-west1",
+                "--max_retries",  "5",
+                "--base_delay",   "60"
+            ]
+        }
+    ]
+}

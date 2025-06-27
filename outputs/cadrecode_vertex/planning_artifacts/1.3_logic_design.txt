@@ -1,0 +1,70 @@
+----------------------------------------
+[Required packages]
+- torch>=2.0.0
+- transformers>=4.30.0
+- numpy>=1.21.0
+- open3d>=0.17.0
+- cadquery>=2.3.0
+- pythonic-cadquery>=2.3.0
+- scikit-learn>=1.0.0
+- tqdm>=4.64.0
+- wandb>=0.15.0
+- matplotlib>=3.5.0
+- pyyaml>=6.0
+- scipy>=1.9.0
+- trimesh>=3.15.0
+- pymeshlab>=2022.2
+- plotly>=5.0.0
+- ipywidgets>=8.0.0
+- jupyter>=1.0.0
+
+----------------------------------------
+[Required Other language third-party packages]
+- OpenCASCADE (required by CadQuery for CAD operations)
+- FreeCAD (optional, for additional CAD validation)
+- Blender (optional, for mesh processing and visualization)
+
+----------------------------------------
+[Logic Analysis]
+- ['config.py', 'Configuration management class that handles all hyperparameters, model settings, and experimental configurations. Contains Config class with methods to load from YAML files, validate parameters, and provide default values. Critical for reproducibility as it centralizes all paper-specified hyperparameters like learning rate (0.0002), batch size (18), embedding dimension (1536), number of points (256), etc. No dependencies on other modules.']
+- ['utils/fourier_encoding.py', 'Implements Fourier positional encoding for 3D point coordinates as mentioned in the paper. Contains FourierEncoding class with encode() method that transforms 3D coordinates into higher-dimensional representations. This is a foundational component needed by the point cloud projector. Dependencies: torch, numpy. Critical for point cloud feature extraction.']
+- ['utils/point_cloud_utils.py', 'Utility functions for point cloud processing including furthest point sampling, normalization, noise addition, and coordinate transformations. Contains functions like furthest_point_sampling(), add_gaussian_noise(), normalize_point_cloud(). Used by multiple components including dataset loader and point cloud projector. Dependencies: torch, numpy, open3d.']
+- ['utils/cad_validation.py', 'CAD code validation utilities implementing φ_syn and φ_cad validation functions from the paper. Contains CADValidator class with methods validate_syntax(), validate_cad_semantics(), validate_geometric(), and is_valid_code(). Critical for ensuring generated code is executable and geometrically valid. Dependencies: cadquery, ast (for Python syntax validation), subprocess for code execution.']
+- ['data/dataset_generator.py', 'Implements procedural dataset generation following Algorithm 1 and 2 from the paper. Contains DatasetGenerator class with methods generate_sketch(), generate_cad_model(), validate_code(), and generate_dataset(). Generates 1M CAD sequences as CadQuery Python code with controlled features and design patterns. Dependencies: cadquery, random, numpy, utils/cad_validation.py. This is a standalone component that creates the training dataset.']
+- ['models/point_cloud_projector.py', 'Implements the point cloud projector module (Ψ_p) from the paper architecture. Contains PointCloudProjector class with forward() method that processes point clouds through furthest point sampling, Fourier encoding, and linear projection to generate query tokens. Dependencies: torch, utils/fourier_encoding.py, utils/point_cloud_utils.py. Core component of the CAD-Recode architecture.']
+- ['data/dataset_loader.py', 'Handles loading and preprocessing of all datasets (procedural, DeepCAD, Fusion360, CC3D). Contains DatasetLoader class with methods for each dataset type, point cloud preprocessing, and PyTorch Dataset/DataLoader creation. Implements data augmentation (Gaussian noise) and tokenization. Dependencies: torch, transformers, utils/point_cloud_utils.py, utils/cad_validation.py, data/dataset_generator.py.']
+- ['models/cad_recode_model.py', 'Main model implementation combining point cloud projector with pre-trained LLM (Qwen2-1.5B). Contains CADRecodeModel class with forward(), generate_code(), and validate_generated_code() methods. Implements the core architecture from Figure 4 of the paper. Dependencies: torch, transformers, models/point_cloud_projector.py, utils/cad_validation.py.']
+- ['evaluation/metrics.py', 'Implements all evaluation metrics from the paper: Chamfer Distance, IoU, and Invalidity Ratio. Contains Metrics class with compute_chamfer_distance(), compute_iou(), compute_invalidity_ratio(), and execute_cad_code() methods. Critical for reproducing paper results. Dependencies: torch, numpy, trimesh, open3d, cadquery, utils/cad_validation.py.']
+- ['training/trainer.py', 'Training loop implementation with end-to-end training strategy from the paper. Contains Trainer class with train_epoch(), validate(), train(), save_checkpoint(), and load_checkpoint() methods. Implements NLL loss, AdamW optimizer, cosine scheduler, and all training hyperparameters from the paper. Dependencies: torch, transformers, models/cad_recode_model.py, wandb for logging.']
+- ['evaluation/evaluator.py', 'Comprehensive evaluation pipeline implementing test-time sampling and multi-dataset evaluation. Contains Evaluator class with evaluate_dataset(), generate_multiple_candidates(), evaluate_all_datasets() methods. Implements the 10-candidate sampling strategy from the paper. Dependencies: torch, models/cad_recode_model.py, evaluation/metrics.py, utils/cad_validation.py.']
+- ['experiments/run_experiments.py', 'Orchestrates all experiments including training, evaluation, ablation studies, and CAD-QA tasks. Contains ExperimentRunner class with methods for each experiment type. Handles experimental workflow and result collection. Dependencies: all previous modules, particularly training/trainer.py and evaluation/evaluator.py.']
+- ['main.py', 'Entry point that sets up logging, loads configuration, and runs experiments. Contains Main class with setup_logging() and run() methods. Coordinates the entire experimental pipeline and handles command-line arguments. Dependencies: config.py, experiments/run_experiments.py, logging setup.']
+
+----------------------------------------
+[Task list]
+- config.py
+- utils/fourier_encoding.py
+- utils/point_cloud_utils.py
+- utils/cad_validation.py
+- data/dataset_generator.py
+- models/point_cloud_projector.py
+- data/dataset_loader.py
+- models/cad_recode_model.py
+- evaluation/metrics.py
+- training/trainer.py
+- evaluation/evaluator.py
+- experiments/run_experiments.py
+- main.py
+
+----------------------------------------
+[Full API spec]
+
+
+----------------------------------------
+[Shared Knowledge]
+Configuration parameters are centralized in config.py and include: model_config (embedding_dim=1536, num_points=256, num_freqs for Fourier encoding), training_config (learning_rate=0.0002, weight_decay=0.01, batch_size=18, num_epochs=100000, warmup_steps=1000), data_config (dataset paths, augmentation settings, noise_std=0.01), evaluation_config (num_candidates=10, metrics settings). Point cloud preprocessing pipeline is shared across dataset_loader.py and evaluator.py including furthest point sampling to 256 points, Fourier positional encoding, and Gaussian noise augmentation. CAD code validation logic is shared between dataset_generator.py, dataset_loader.py, and evaluator.py through utils/cad_validation.py. Tokenization and LLM handling use HuggingFace transformers with Qwen2-1.5B model consistently across training and evaluation. Metrics computation (Chamfer Distance, IoU, Invalidity Ratio) follows paper specifications with 8192 points for CD calculation and mesh-based IoU computation. Test-time sampling strategy generates 10 candidates through different point cloud samplings and selects best valid result.
+
+----------------------------------------
+[Anything UNCLEAR]
+1. Exact Fourier encoding implementation details (number of frequencies, encoding formula) are not specified in the paper. 2. Specific heuristics for procedural dataset generation algorithms need clarification on parameter ranges and geometric constraints. 3. The duplicate detection protocol mentioned in the paper lacks implementation details. 4. Test-time candidate selection criteria among 10 generated codes is not clearly specified. 5. Integration with CadQuery library may require specific version compatibility and error handling strategies. 6. Hardware requirements for generating 1M dataset samples and training on H100 GPU equivalent setup. 7. Exact preprocessing steps for converting DeepCAD/Fusion360 datasets to CadQuery format.
+

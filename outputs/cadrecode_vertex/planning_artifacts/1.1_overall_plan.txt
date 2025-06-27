@@ -1,0 +1,197 @@
+# CAD-Recode Reproduction Plan
+
+## Overview
+CAD-Recode is a method that translates point clouds into executable Python CadQuery code for CAD reverse engineering. The approach combines a lightweight point cloud projector with a pre-trained LLM (Qwen2-1.5B) and is trained on a procedurally generated dataset of 1M CAD sequences.
+
+## 1. Key Methodology Components
+
+### 1.1 CAD Representation
+- **Target Format**: CadQuery Python code representing sketch-extrude sequences
+- **Key Advantages**: 
+  - Modularity (supports both low-level primitives and high-level abstractions)
+  - Direct executability 
+  - LLM interpretability
+- **Supported Operations**: 
+  - Primitives: lines, arcs, circles
+  - High-level: boxes, cylinders, rectangles
+  - Operations: extrusion, union, boolean operations
+
+### 1.2 Problem Formulation
+- **Input**: Point cloud P ∈ R^(n×3)
+- **Output**: Valid CAD code C ∈ C where C = {w ∈ Σ* | φ_syn(w) ∧ φ_cad(w)}
+- **Validation Functions**:
+  - φ_syn: Python syntax validation
+  - φ_cad: CAD-specific validation (CadQuery syntax + geometric validity)
+
+### 1.3 Architecture Components
+
+#### Point Cloud Projector (Ψ_p)
+1. **Furthest Point Sampling**: Downsample to n_p = 256 points
+2. **Fourier Positional Encoding**: Encode 3D coordinates
+3. **Linear Projection**: Map to query tokens Q_p ∈ R^(n_p × d_q) where d_q = 1536
+
+#### LLM Decoder (Ψ_LLM)
+- **Base Model**: Qwen2-1.5B
+- **Input**: Concatenated tokens [Q_p; Q_t] where Q_t are tokenized code tokens
+- **Output**: Next-token prediction for CAD code generation
+- **Special Tokens**: <s> (start), <e> (end)
+
+## 2. Training Dataset Generation
+
+### 2.1 Procedural Generation Pipeline
+- **Target Size**: 1 million CAD sequences
+- **Generation Strategy**: 
+  - Algorithm 1: Generate2DSketch (3-8 primitives per sketch)
+  - Algorithm 2: GenerateCAD (extrude sketches, apply unions)
+- **Primitives**: Circles, rotated rectangles combined via union/cut operations
+- **Validation**: Multiple checks for geometric validity and uniqueness
+
+### 2.2 Dataset Characteristics
+- **Parameter Quantization**: Coordinates in range [-100, 100] with resolution 1
+- **Normalization**: Models fit within unit bounding box
+- **Modularity Features**: 
+  - Reuse of point coordinates
+  - Abstraction to higher-level shapes (boxes, cylinders)
+  - Variable reuse in code
+
+### 2.3 Code Structure
+All generated codes follow consistent pattern:
+1. Library import (`import cadquery as cq`)
+2. Workplane definition
+3. Sketch-extrude operations with union combinations
+
+## 3. Training Strategy
+
+### 3.1 Training Configuration
+- **Optimizer**: AdamW
+- **Learning Rate**: 0.0002
+- **Weight Decay**: 0.01
+- **Scheduler**: Cosine learning rate scheduler
+- **Iterations**: 100k with 1k warmup
+- **Batch Size**: 18
+- **Hardware**: Single NVIDIA H100 GPU
+- **Training Time**: ~12 hours
+
+### 3.2 Data Augmentation
+- **Gaussian Noise**: σ = 0.01, applied with probability 0.5
+- **Point Cloud Sampling**: Random sampling to 256 points
+
+### 3.3 Loss Function
+- **Objective**: Negative Log-Likelihood (NLL) of target CAD code sequence
+- **Training Mode**: End-to-end (point cloud projector from scratch, LLM fine-tuned)
+
+## 4. Inference Strategy
+
+### 4.1 Test-Time Sampling
+- **Multiple Candidates**: Generate 10 different CAD code candidates
+- **Sampling Strategy**: Different point cloud samplings for each candidate
+- **Selection**: Choose best candidate based on validation metrics
+
+### 4.2 Inference Pipeline
+1. Point cloud projector processes input → query tokens Q_p
+2. LLM generates code autoregressively starting with <s>
+3. Generation stops at <e> token
+4. Validate generated code for syntax and geometric validity
+
+## 5. Experimental Setup
+
+### 5.1 Datasets
+**Test Datasets**:
+- **DeepCAD**: 8,046 models
+- **Fusion360**: 1,725 models  
+- **CC3D**: 2,973 models (real-world scans with noise/artifacts)
+
+**Point Cloud Generation**:
+- DeepCAD/Fusion360: Sample points from meshes
+- CC3D: Use provided point clouds from 3D scans
+
+### 5.2 Evaluation Metrics
+- **Chamfer Distance (CD)**: Mean and median, computed with 8,192 points, multiplied by 10³
+- **Intersection over Union (IoU)**: Percentage from resulting CAD model meshes
+- **Invalidity Ratio (IR)**: Percentage of sequences failing to produce valid CAD models
+
+### 5.3 Baseline Comparisons
+- CAD-SIGNet [21]
+- DeepCAD [48]
+- TransCAD [12]
+- CAD-Diffuser [34]
+- MultiCAD [33]
+- Point2Cyl [45]
+- HNC-CAD [52]
+- PrismCAD [25]
+
+## 6. Implementation Requirements
+
+### 6.1 Dependencies
+- **Core Libraries**: 
+  - PyTorch/HuggingFace Transformers
+  - CadQuery library
+  - PythonOCC
+- **Model**: Qwen2-1.5B from HuggingFace
+- **Point Cloud Processing**: Furthest point sampling implementation
+- **Evaluation**: Chamfer distance computation utilities
+
+### 6.2 Data Processing Pipeline
+1. **Dataset Conversion**: Convert existing datasets (DeepCAD, Fusion360) to CadQuery format
+2. **Procedural Generation**: Implement Algorithms 1 & 2 for synthetic data creation
+3. **Validation Framework**: Implement φ_syn and φ_cad validation functions
+4. **Point Cloud Sampling**: Mesh to point cloud conversion for test datasets
+
+### 6.3 Model Implementation
+1. **Point Cloud Projector**: 
+   - Furthest point sampling module
+   - Fourier positional encoding
+   - Linear projection layer
+2. **LLM Integration**: 
+   - Load pre-trained Qwen2-1.5B
+   - Modify for concatenated input tokens
+   - Implement fine-tuning pipeline
+3. **Training Loop**: 
+   - End-to-end training with NLL loss
+   - Gradient accumulation if needed
+   - Validation during training
+
+### 6.4 Evaluation Pipeline
+1. **Metrics Computation**: Implement CD, IoU, IR calculations
+2. **Code Validation**: Syntax and geometric validation
+3. **Visualization**: Point cloud and CAD model rendering
+4. **Comparison Framework**: Standardized evaluation against baselines
+
+## 7. Additional Experiments
+
+### 7.1 CAD Question Answering
+- **Dataset**: SGP-Bench (1000 questions)
+- **Pipeline**: CAD-Recode → GPT-4o for QA
+- **Baseline**: PointLLM, CAD-SIGNet + GPT-4o
+
+### 7.2 Interactive Editing
+- **Goal**: Generate editable code with parameter sliders
+- **Implementation**: GPT-4o refactoring of CAD-Recode output
+- **Interface**: Jupyter notebook with ipywidgets
+
+### 7.3 Ablation Studies
+- **Training Data Size**: 160k vs 1M samples
+- **Test-time Sampling**: With/without multiple candidates
+- **Architecture**: Point cloud size (64, 128, 256), LLM size (0.5B vs 1.5B)
+- **Dataset Comparison**: DeepCAD vs procedurally generated
+
+## 8. Potential Implementation Challenges
+
+### 8.1 Unclear Aspects
+- **Exact Fourier Encoding**: Specific implementation details not provided
+- **Duplicate Detection**: Protocol referenced but not detailed
+- **Code Simplification**: "Simplify using higher level abstractions" - exact algorithm unclear
+- **Quantization Details**: Specific method for parameter discretization
+
+### 8.2 Technical Challenges
+- **CadQuery Integration**: Ensuring proper installation and compatibility
+- **Memory Requirements**: Large point clouds + LLM may require optimization
+- **Validation Speed**: Real-time code execution validation may be slow
+- **Dataset Scale**: Generating 1M samples requires significant computational resources
+
+### 8.3 Evaluation Challenges
+- **Baseline Reproduction**: Some baseline results may be difficult to reproduce exactly
+- **Metric Implementation**: Ensuring consistent CD/IoU computation with prior work
+- **Real-world Data**: CC3D dataset access and preprocessing
+
+This comprehensive plan provides the foundation for implementing CAD-Recode, covering all major components from data generation through evaluation, while highlighting areas that may require additional research or clarification during implementation.

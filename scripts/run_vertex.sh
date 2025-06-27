@@ -4,16 +4,25 @@
 # export GOOGLE_CLOUD_PROJECT="your-project-id"
 # export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account-key.json"
 
-VERTEX_MODEL="claude-3-5-sonnet-v2@20241022"
+# VERTEX_MODEL="claude-3-5-sonnet-v2@20241022"
+VERTEX_MODEL="claude-sonnet-4"
 PROJECT_ID=${GOOGLE_CLOUD_PROJECT}
-LOCATION="us-central1"
+#LOCATION="us-central1"
+LOCATION="europe-west1"
 
-PAPER_NAME="Transformer"
-PDF_PATH="../examples/Transformer.pdf" # .pdf
-PDF_JSON_PATH="../examples/Transformer.json" # .json
-PDF_JSON_CLEANED_PATH="../examples/Transformer_cleaned.json" # _cleaned.json
-OUTPUT_DIR="../outputs/Transformer_vertex"
-OUTPUT_REPO_DIR="../outputs/Transformer_vertex_repo"
+# PAPER_NAME="Transformer"
+# PDF_PATH="../examples/Transformer.pdf" # .pdf
+# PDF_JSON_PATH="../examples/Transformer.json" # .json
+# PDF_JSON_CLEANED_PATH="../examples/Transformer_cleaned.json" # _cleaned.json
+# OUTPUT_DIR="../outputs/Transformer_vertex"
+# OUTPUT_REPO_DIR="../outputs/Transformer_vertex_repo"
+
+PAPER_NAME="CADRecode"
+PDF_PATH="../examples/cadrecode.pdf" # .pdf
+PDF_JSON_PATH="../examples/cadrecode.json" # .json
+PDF_JSON_CLEANED_PATH="../examples/cadrecode_cleaned.json" # _cleaned.json
+OUTPUT_DIR="../outputs/cadrecode_vertex"
+OUTPUT_REPO_DIR="../outputs/cadrecode_vertex_repo"
 
 mkdir -p $OUTPUT_DIR
 mkdir -p $OUTPUT_REPO_DIR

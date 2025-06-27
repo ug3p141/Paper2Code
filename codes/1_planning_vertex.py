@@ -5,13 +5,13 @@ import os
 import sys
 import time
 from utils import print_response, load_accumulated_cost, save_accumulated_cost
-from vertex_utils import (initialize_vertex_ai, get_vertex_model, vertex_api_call, 
-                         print_log_cost_vertex, truncate_content_if_needed)
+from vertex_utils import (initialize_vertex_ai, get_claude_model_names, vertex_claude_api_call, 
+                         print_log_cost_vertex, truncate_content_if_needed, list_available_models)
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--paper_name', type=str)
-parser.add_argument('--vertex_model', type=str, default="claude-3-5-sonnet-v2@20241022")
+parser.add_argument('--vertex_model', type=str, default="claude-sonnet-4")
 parser.add_argument('--paper_format', type=str, default="JSON", choices=["JSON", "LaTeX"])
 parser.add_argument('--pdf_json_path', type=str)  # json format
 parser.add_argument('--pdf_latex_path', type=str)  # latex format
@@ -24,8 +24,10 @@ parser.add_argument('--location', type=str, default="us-central1")
 args = parser.parse_args()
 
 # Initialize Vertex AI
-project_id, location = initialize_vertex_ai(args.project_id, args.location)
-model = get_vertex_model(args.vertex_model)
+project_id, location, credentials = initialize_vertex_ai(args.project_id, args.location)
+
+# List available models
+available_models = list_available_models()
 
 paper_name = args.paper_name
 vertex_model = args.vertex_model
@@ -35,6 +37,15 @@ pdf_latex_path = args.pdf_latex_path
 output_dir = args.output_dir
 max_retries = args.max_retries
 base_delay = args.base_delay
+
+# Validate model name
+available_model_names = get_claude_model_names()
+if vertex_model not in available_model_names and vertex_model not in available_model_names.values():
+    print(f"❌ Error: Model '{vertex_model}' not found.")
+    print("Available models:")
+    for short_name, full_name in available_model_names.items():
+        print(f"  - {short_name} ({full_name})")
+    sys.exit(1)
 
 if paper_format == "JSON":
     with open(f'{pdf_json_path}') as f:
@@ -251,8 +262,9 @@ for idx, instruction_msg in enumerate([plan_msg, file_list_msg, task_list_msg, c
         print(f"⏳ Waiting {INTER_CALL_DELAY} seconds to respect rate limits...")
         time.sleep(INTER_CALL_DELAY)
 
-    completion = vertex_api_call(model, trajectories, max_output_tokens=4096, 
-                                max_retries=max_retries, base_delay=base_delay)
+    completion = vertex_claude_api_call(project_id, location, credentials, vertex_model, 
+                                        trajectories, max_tokens=4096, 
+                                        max_retries=max_retries, base_delay=base_delay)
 
     # print and logging
     print_response(completion)

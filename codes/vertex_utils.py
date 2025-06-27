@@ -3,103 +3,191 @@ import os
 import time
 from datetime import datetime
 from typing import List, Dict, Any
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
-from google.cloud import aiplatform
+import requests
+from google.auth import default
+from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 
-def initialize_vertex_ai(project_id: str = None, location: str = "us-central1"):
+def initialize_vertex_ai(project_id: str = None, location: str = "europe-west1"):
     """Initialize Vertex AI with project credentials."""
     if project_id is None:
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
         if not project_id:
             raise ValueError("Please set GOOGLE_CLOUD_PROJECT environment variable or pass project_id")
     
-    vertexai.init(project=project_id, location=location)
-    print(f"✅ Vertex AI initialized for project: {project_id}, location: {location}")
-    return project_id, location
-
-def get_vertex_model(model_name: str = "claude-3-5-sonnet-v2@20241022"):
-    """Get Vertex AI model instance for Claude."""
-    # Available Claude models in Vertex AI:
-    # - claude-3-5-sonnet-v2@20241022
-    # - claude-3-5-haiku@20241022  
-    # - claude-3-opus@20240229
+    # Get credentials for API calls with proper scopes
+    credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     
-    model = GenerativeModel(model_name)
-    return model
+    if credentials_path and os.path.exists(credentials_path):
+        # Load from service account file
+        from google.oauth2 import service_account
+        
+        # Define the required scopes for Vertex AI
+        scopes = [
+            'https://www.googleapis.com/auth/cloud-platform',
+            'https://www.googleapis.com/auth/cloud-platform.read-only'
+        ]
+        
+        credentials = service_account.Credentials.from_service_account_file(
+            credentials_path, scopes=scopes
+        )
+        print(f"✅ Loaded credentials from: {credentials_path}")
+    else:
+        # Try default credentials (for environments like Colab, Cloud Shell)
+        try:
+            credentials, detected_project = default(scopes=[
+                'https://www.googleapis.com/auth/cloud-platform'
+            ])
+            if not project_id and detected_project:
+                project_id = detected_project
+            print(f"✅ Using default credentials")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load credentials. Please either:\n"
+                f"1. Set GOOGLE_APPLICATION_CREDENTIALS to your service account key file\n"
+                f"2. Run 'gcloud auth application-default login'\n"
+                f"Error: {e}"
+            )
+    
+    # Refresh credentials to ensure they're valid
+    if not credentials.valid:
+        credentials.refresh(Request())
+    
+    print(f"✅ Vertex AI initialized for project: {project_id}, location: {location}")
+    return project_id, location, credentials
 
-def convert_messages_to_vertex(messages: List[Dict[str, str]]) -> tuple:
-    """Convert OpenAI-style messages to Vertex AI format."""
-    system_instruction = ""
-    conversation_parts = []
+def get_claude_model_names():
+    """Get available Claude model names for Vertex AI."""
+    # Available Claude models in Vertex AI as of June 2025
+    available_models = {
+        # Claude 4 models (latest)
+        "claude-opus-4": "claude-opus-4@20250514",
+        "claude-sonnet-4": "claude-sonnet-4@20250514", 
+        
+        # Claude 3.7 models
+        "claude-3-7-sonnet": "claude-3-7-sonnet@20250219",
+        
+        # Claude 3.5 models  
+        "claude-3-5-sonnet": "claude-3-5-sonnet@20241022",
+        "claude-3-5-haiku": "claude-3-5-haiku@20241022",
+        
+        # Claude 3 models
+        "claude-3-opus": "claude-3-opus@20240229",
+        "claude-3-sonnet": "claude-3-sonnet@20240229",
+        "claude-3-haiku": "claude-3-haiku@20240307",
+    }
+    return available_models
+
+def vertex_claude_api_call(project_id: str, location: str, credentials, model_name: str, 
+                          messages: List[Dict[str, str]], max_tokens: int = 4096, 
+                          temperature: float = 0.7, max_retries: int = 5, base_delay: int = 60):
+    """Make API call to Claude via Vertex AI using the correct Anthropic API endpoint."""
+    
+    # Get the full model name with version
+    available_models = get_claude_model_names()
+    if model_name in available_models:
+        full_model_name = available_models[model_name]
+    else:
+        # If it's already a full model name, use it directly
+        full_model_name = model_name
+    
+    # Convert messages to Anthropic format
+    system_message = ""
+    formatted_messages = []
     
     for msg in messages:
         if msg['role'] == 'system':
-            system_instruction = msg['content']
+            system_message = msg['content']
         elif msg['role'] == 'user':
-            conversation_parts.append(Part.from_text(f"Human: {msg['content']}"))
+            formatted_messages.append({"role": "user", "content": msg['content']})
         elif msg['role'] == 'assistant':
-            conversation_parts.append(Part.from_text(f"Assistant: {msg['content']}"))
+            formatted_messages.append({"role": "assistant", "content": msg['content']})
     
-    return system_instruction, conversation_parts
-
-def vertex_api_call(model, messages: List[Dict[str, str]], max_output_tokens: int = 4096, 
-                   temperature: float = 0.7, max_retries: int = 5, base_delay: int = 60):
-    """Make API call to Claude via Vertex AI with retry logic."""
-    
-    system_instruction, conversation_parts = convert_messages_to_vertex(messages)
-    
-    # Combine all parts into a single prompt for Claude
-    full_prompt = ""
-    if system_instruction:
-        full_prompt += f"System: {system_instruction}\n\n"
-    
-    # Extract the conversation
-    for part in conversation_parts:
-        full_prompt += part.text + "\n\n"
-    
-    # Add final instruction for response
-    full_prompt += "Assistant: "
-    
-    generation_config = {
-        "max_output_tokens": max_output_tokens,
+    # Prepare the request payload
+    payload = {
+        "anthropic_version": "vertex-2023-10-16",  # Required for Vertex AI
+        "max_tokens": max_tokens,
         "temperature": temperature,
-        "top_p": 0.95,
+        "messages": formatted_messages
+    }
+    
+    if system_message:
+        payload["system"] = system_message
+    
+    # Vertex AI endpoint for Anthropic models
+    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/anthropic/models/{full_model_name}:rawPredict"
+    
+    headers = {
+        "Authorization": f"Bearer {credentials.token}",
+        "Content-Type": "application/json"
+        # Note: anthropic_version goes in body for Vertex AI, not headers
     }
     
     for attempt in range(max_retries):
         try:
-            print(f"🔄 Vertex AI API call attempt {attempt + 1}/{max_retries}")
+            print(f"🔄 Vertex AI Claude API call attempt {attempt + 1}/{max_retries}")
+            print(f"🤖 Using model: {full_model_name}")
             
-            response = model.generate_content(
-                [Part.from_text(full_prompt)],
-                generation_config=generation_config
-            )
+            # Refresh credentials if needed
+            if not credentials.valid:
+                credentials.refresh(Request())
+                headers["Authorization"] = f"Bearer {credentials.token}"
             
-            # Extract response text
-            if response.candidates and len(response.candidates) > 0:
-                response_text = response.candidates[0].content.parts[0].text
-            else:
-                raise Exception("No response candidates generated")
+            response = requests.post(url, headers=headers, json=payload, timeout=300)
             
-            # Convert to OpenAI-like format for compatibility
-            completion = {
-                "choices": [{
-                    "message": {
-                        "role": "assistant",
-                        "content": response_text
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Extract response content
+                if 'content' in result and len(result['content']) > 0:
+                    response_text = result['content'][0]['text']
+                else:
+                    raise Exception("No content in response")
+                
+                # Extract usage information
+                usage = result.get('usage', {})
+                input_tokens = usage.get('input_tokens', 0)
+                output_tokens = usage.get('output_tokens', 0)
+                
+                # Convert to OpenAI-like format for compatibility
+                completion = {
+                    "choices": [{
+                        "message": {
+                            "role": "assistant",
+                            "content": response_text
+                        }
+                    }],
+                    "usage": {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": input_tokens + output_tokens
                     }
-                }],
-                "usage": {
-                    "input_tokens": response.usage_metadata.prompt_token_count if response.usage_metadata else 0,
-                    "output_tokens": response.usage_metadata.candidates_token_count if response.usage_metadata else 0,
-                    "total_tokens": (response.usage_metadata.total_token_count if response.usage_metadata else 0)
                 }
-            }
-            
-            print("✅ Vertex AI API call successful")
-            return completion
-            
+                
+                print("✅ Vertex AI Claude API call successful")
+                return completion
+                
+            else:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                print(f"❌ API Error: {error_msg}")
+                
+                if response.status_code in [429, 503, 500]:  # Rate limit or server errors
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        print(f"⚠️  Rate limit/server error. Waiting {delay} seconds before retry {attempt + 2}...")
+                        time.sleep(delay)
+                        continue
+                
+                raise Exception(error_msg)
+                
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                print(f"⚠️  Request timeout. Waiting {delay} seconds before retry {attempt + 2}...")
+                time.sleep(delay)
+            else:
+                raise Exception("Request timed out after all retries")
+                
         except Exception as e:
             error_str = str(e).lower()
             if "quota" in error_str or "rate" in error_str or "limit" in error_str:
@@ -122,11 +210,24 @@ def vertex_api_call(model, messages: List[Dict[str, str]], max_output_tokens: in
 def cal_cost_vertex(response_json: Dict[str, Any], model_name: str) -> Dict[str, Any]:
     """Calculate cost for Vertex AI Claude API calls."""
     
-    # Vertex AI Claude pricing (per 1M tokens) - approximate as of 2025
+    # Vertex AI Claude pricing (per 1M tokens) - as of June 2025
     model_cost = {
-        "claude-3-5-sonnet-v2@20241022": {"input": 3.00, "output": 15.00},
+        # Claude 4 models
+        "claude-opus-4@20250514": {"input": 15.00, "output": 75.00},
+        "claude-sonnet-4@20250514": {"input": 3.00, "output": 15.00},
+        
+        # Claude 3.7 models
+        "claude-3-7-sonnet@20250219": {"input": 3.00, "output": 15.00},
+        
+        # Claude 3.5 models
+        "claude-3-5-sonnet@20241022": {"input": 3.00, "output": 15.00},
         "claude-3-5-haiku@20241022": {"input": 0.25, "output": 1.25},
+        
+        # Claude 3 models
         "claude-3-opus@20240229": {"input": 15.00, "output": 75.00},
+        "claude-3-sonnet@20240229": {"input": 3.00, "output": 15.00},
+        "claude-3-haiku@20240307": {"input": 0.25, "output": 1.25},
+        
         # Default fallback
         "default": {"input": 3.00, "output": 15.00}
     }
@@ -177,7 +278,7 @@ def print_log_cost_vertex(completion_json: Dict[str, Any], model_name: str,
     
     return total_accumulated_cost
 
-def truncate_content_if_needed(content, max_chars: int = 50000):
+def truncate_content_if_needed(content, max_chars: int = 80000):
     """Truncate content if it exceeds the maximum character limit."""
     if isinstance(content, str) and len(content) > max_chars:
         print(f"⚠️  Paper content is large ({len(content)} chars). Truncating to {max_chars} chars...")
@@ -199,3 +300,13 @@ def truncate_content_if_needed(content, max_chars: int = 50000):
             else:
                 return json.loads(json.dumps(content)[:max_chars] + '"}')
     return content
+
+def list_available_models():
+    """List all available Claude models."""
+    models = get_claude_model_names()
+    print("📋 Available Claude Models on Vertex AI:")
+    print("=" * 50)
+    for short_name, full_name in models.items():
+        print(f"🤖 {short_name:20} -> {full_name}")
+    print("=" * 50)
+    return models

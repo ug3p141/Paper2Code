@@ -1,0 +1,136 @@
+# CAD-Recode Configuration
+# Based on the paper: "CAD-Recode: Reverse Engineering CAD Code from Point Clouds"
+
+## Model Configuration
+model:
+  # LLM backbone model
+  llm_model_name: "Qwen/Qwen2-1.5B"
+  
+  # Point cloud projector parameters
+  projector:
+    num_points: 256  # Point clouds downsampled to 256 points (from paper)
+    hidden_dim: 768  # Standard dimension for compatibility with LLM
+    fourier_freqs: 10  # Number of Fourier frequency bands for positional encoding
+    
+  # Generation parameters
+  generation:
+    max_length: 512  # Maximum length for CAD code generation
+    temperature: 0.7
+    do_sample: true
+    top_p: 0.9
+
+## Training Configuration
+training:
+  # Training parameters (not specified in paper - using reasonable defaults)
+  learning_rate: 5e-5  # Standard fine-tuning rate for LLMs
+  batch_size: 8  # Reasonable batch size for LLM fine-tuning
+  gradient_accumulation_steps: 4  # Effective batch size of 32
+  num_epochs: 10  # Not specified in paper
+  warmup_steps: 1000
+  weight_decay: 0.01
+  
+  # Training objective
+  loss_function: "negative_log_likelihood"  # From paper
+  
+  # Hardware configuration
+  device: "cuda"
+  mixed_precision: true
+  
+  # Checkpointing
+  save_every_n_epochs: 1
+  checkpoint_dir: "./checkpoints"
+  
+  # Logging
+  log_every_n_steps: 100
+  eval_every_n_epochs: 1
+
+## Dataset Configuration
+dataset:
+  # Training dataset (procedurally generated)
+  train:
+    size: 1000000  # One million CAD sequences (from paper)
+    data_dir: "./data/generated"
+    
+  # Test datasets
+  test:
+    deepcad:
+      path: "./data/deepcad"
+      num_samples: 8046  # From paper
+    fusion360:
+      path: "./data/fusion360" 
+      num_samples: 1725  # From paper
+    cc3d:
+      path: "./data/cc3d"
+      num_samples: 2973  # From paper
+  
+  # Data processing
+  preprocessing:
+    normalize_point_clouds: true
+    add_noise: false
+    noise_level: 0.01
+
+## Dataset Generation Configuration
+generation:
+  # CAD sequence generation parameters
+  max_sketches_per_model: 5
+  max_extrudes_per_sketch: 3
+  
+  # Geometric constraints
+  min_sketch_size: 0.1
+  max_sketch_size: 10.0
+  min_extrude_distance: 0.1
+  max_extrude_distance: 5.0
+  
+  # Point cloud sampling
+  points_per_surface: 2048
+  surface_sampling_method: "uniform"
+
+## Evaluation Configuration
+evaluation:
+  # Evaluation metrics (from paper)
+  metrics:
+    - "chamfer_distance"  # CD
+    - "intersection_over_union"  # IoU  
+    - "invalidity_ratio"  # IR
+  
+  # Evaluation settings
+  batch_size: 16
+  num_workers: 4
+  
+  # IoU computation
+  voxel_resolution: 64
+  
+  # Output directories
+  results_dir: "./results"
+  visualizations_dir: "./visualizations"
+
+## Hardware Requirements
+hardware:
+  # Based on paper: ~12 hours training on NVIDIA H100
+  recommended_gpu: "NVIDIA H100"
+  min_gpu_memory: "24GB"  # For Qwen2-1.5B + point cloud processing
+  training_time_estimate: "12 hours"  # From paper
+
+## Paths
+paths:
+  # Model checkpoints
+  pretrained_model_dir: "./models/pretrained"
+  finetuned_model_dir: "./models/finetuned"
+  
+  # Data directories
+  raw_data_dir: "./data/raw"
+  processed_data_dir: "./data/processed"
+  
+  # Output directories
+  output_dir: "./output"
+  logs_dir: "./logs"
+
+## CadQuery Configuration
+cadquery:
+  # Code generation settings
+  max_code_length: 1000
+  indentation: "    "  # 4 spaces
+  
+  # Validation settings
+  execution_timeout: 30  # seconds
+  max_retries: 3

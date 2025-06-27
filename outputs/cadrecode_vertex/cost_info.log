@@ -1,0 +1,36 @@
+🌟 Usage Summary 🌟
+[Planning] Overall plan
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 23910 (Cost: $0.07173000)
+📤 Output tokens: 2306 (Cost: $0.03459000)
+💵 Current total cost: $0.10632000
+🪙 Accumulated total cost so far: $0.10632000
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Architecture design
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 27049 (Cost: $0.08114700)
+📤 Output tokens: 2638 (Cost: $0.03957000)
+💵 Current total cost: $0.12071700
+🪙 Accumulated total cost so far: $0.22703700
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Logic design
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 30503 (Cost: $0.09150900)
+📤 Output tokens: 2250 (Cost: $0.03375000)
+💵 Current total cost: $0.12525900
+🪙 Accumulated total cost so far: $0.35229600
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Configuration file generation
+🛠️ Model: claude-sonnet-4
+📥 Input tokens: 32946 (Cost: $0.09883800)
+📤 Output tokens: 1203 (Cost: $0.01804500)
+💵 Current total cost: $0.11688300
+🪙 Accumulated total cost so far: $0.46917900
+============================================
+
